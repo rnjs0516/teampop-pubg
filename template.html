@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;font:14px system-ui,sans-serif}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<title>TEAMPOP PUBG Analytics</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;700;800&display=swap">
+<style>
+/* Layout: one column, phone-first. Sticky HUD bar, then stacked analysis bands. */
+:root{
+  --bg:#0a0f16; --surface:#111924; --surface-2:#16212e;
+  --line:#233141; --line-2:#2e4056;
+  --ink:#e9eff7; --ink-2:#9aacc0; --ink-3:#6a7d92;
+  --gold:#e9b44c; --mark-self:#d7a33d; --mark:#4a86d6;
+  --good:#3fc98d; --warn:#e2a33f;
+  --f-disp:'Chakra Petch','Noto Sans KR',sans-serif;
+  --f-body:'Noto Sans KR',system-ui,-apple-system,sans-serif;
+  --f-num:'Chakra Petch',ui-monospace,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;-webkit-text-size-adjust:100%}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+.wrap{max-width:860px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 56px}
+.eyebrow{font-family:var(--f-disp);font-size:10.5px;font-weight:700;letter-spacing:.16em;color:var(--gold);text-transform:uppercase}
+h1,h2{text-wrap:balance;margin:0}
+code{font-family:var(--f-num);font-size:.92em;color:var(--ink-2)}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:3px}
+
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--surface);border-bottom:1px solid var(--line)}
+.hud{max-width:860px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:11px;display:flex;align-items:center;gap:12px}
+.brand{display:flex;flex-direction:column;gap:1px;min-width:0}
+.brand h1{font-family:var(--f-disp);font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.brand h1 b{color:var(--gold);font-weight:700}
+.hud-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.meter{font-family:var(--f-num);font-size:11px;color:var(--ink-2);border:1px solid var(--line-2);border-radius:999px;padding:4px 9px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.meter b{color:var(--ink)}
+.meter.hot{border-color:var(--warn);color:var(--warn)}
+.meter.hot b{color:var(--warn)}
+
+button{font-family:var(--f-body);font-size:14px;cursor:pointer;border-radius:8px;border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink);padding:9px 13px;font-weight:600}
+button:hover:not(:disabled){border-color:var(--ink-3)}
+button:disabled{opacity:.5;cursor:default}
+button.primary{background:var(--gold);color:#17120a;border-color:var(--gold);font-weight:800}
+button.primary:hover:not(:disabled){background:#f0c164;border-color:#f0c164}
+.icon-btn{padding:7px 11px;font-size:12.5px}
+label{display:block;font-size:11.5px;font-weight:700;color:var(--ink-2);letter-spacing:.03em;margin-bottom:6px}
+input{width:100%;background:#0b1420;border:1px solid var(--line-2);color:var(--ink);padding:11px 12px;border-radius:8px;font:inherit;font-size:14.5px;min-width:0}
+input::placeholder{color:var(--ink-3)}
+input:focus{border-color:var(--gold);outline:none}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:13px;padding:16px;margin-top:14px}
+.note{font-size:12.5px;color:var(--ink-3);line-height:1.5;margin:0}
+.hint{display:flex;gap:7px;align-items:flex-start;font-size:12.5px;color:var(--ink-2);background:#15202c;border:1px solid var(--line);border-left:2px solid var(--gold);border-radius:0 8px 8px 0;padding:10px 12px;margin-top:12px}
+.err{font-size:13px;color:#ffc3c3;background:#331a1e;border:1px solid #5d2b31;border-radius:9px;padding:11px 13px;margin-top:12px}
+
+.roster{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+.rchip{font-family:var(--f-num);font-size:12px;border:1px solid var(--line-2);background:var(--surface);border-radius:999px;padding:5px 11px;color:var(--ink-2)}
+.rchip b{color:var(--gold);font-weight:700}
+
+.sec{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:30px 0 11px;flex-wrap:wrap}
+.sec h2{font-size:19px;font-weight:800;letter-spacing:-.01em;margin-top:4px}
+.sec .meta{font-family:var(--f-num);font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+
+.tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:13px 14px;display:flex;flex-direction:column;gap:3px}
+.tile .k{font-size:10.5px;font-weight:700;letter-spacing:.09em;color:var(--ink-3);text-transform:uppercase;font-family:var(--f-disp)}
+.tile .v{font-family:var(--f-num);font-size:26px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.tile .s{font-size:11.5px;color:var(--ink-3);font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.tile.hero .v{color:var(--gold);font-size:30px}
+
+/* awards */
+.awards{display:grid;grid-template-columns:1fr;gap:9px}
+.award{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 13px;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}
+.aw-ico{width:38px;height:38px;border-radius:50%;background:#16212e;border:1px solid #42361d;display:grid;place-items:center;font-size:18px;line-height:1}
+.aw-mid{min-width:0}
+.aw-t{font-family:var(--f-disp);font-size:14.5px;font-weight:700;color:var(--gold);letter-spacing:.01em}
+.aw-d{font-size:11.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.aw-r{text-align:right;min-width:0}
+.aw-n{font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.aw-v{font-family:var(--f-num);font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.award.none .aw-t{color:var(--ink-3)}
+.award.none .aw-n{color:var(--ink-3);font-weight:400}
+
+.tbl-wrap{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;white-space:nowrap}
+th,td{padding:12px 13px;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--surface)}
+tr:last-child td{border-bottom:0}
+th{font-family:var(--f-disp);font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--ink-3);text-transform:uppercase}
+th button{all:unset;cursor:pointer;font:inherit;letter-spacing:inherit;color:inherit}
+th button:hover{color:var(--ink)}
+th[aria-sort] button{color:var(--gold)}
+td{font-family:var(--f-num);font-size:14px;font-variant-numeric:tabular-nums;color:var(--ink)}
+td.name{font-family:var(--f-body);font-weight:600;max-width:230px;overflow:hidden;text-overflow:ellipsis}
+td.tier{font-family:var(--f-num);font-size:12.5px;color:var(--ink-2);text-align:left}
+
+.bars{display:flex;flex-direction:column;gap:9px}
+.bar-row{display:grid;grid-template-columns:minmax(74px,24%) 1fr auto;gap:10px;align-items:center}
+.bar-row .nm{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.track{background:#0d1621;border-radius:0 4px 4px 0;height:16px;min-width:0}
+.fill{display:block;height:100%;background:var(--mark);border-radius:0 4px 4px 0;transition:width .35s ease}
+.bar-row.best .fill{background:var(--mark-self)}
+.bar-row .vl{font-family:var(--f-num);font-size:13px;font-variant-numeric:tabular-nums;color:var(--ink-2);min-width:56px;text-align:right}
+.bar-row.best .vl{color:var(--ink)}
+.chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:11px}
+.chips button{font-size:12.5px;padding:6px 11px;border-radius:7px}
+.chips button[aria-pressed=true]{background:var(--surface-2);border-color:var(--gold);color:var(--gold)}
+.bar-cap{font-size:11.5px;color:var(--ink-3);margin:0 0 12px}
+
+.chart{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 12px 10px}
+.chart svg{display:block;width:100%;height:auto;max-width:100%}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-3);margin-top:9px;padding-left:2px}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+
+.matches{display:grid;grid-template-columns:1fr;gap:9px}
+.match{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:12px 13px;display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start}
+.rank{font-family:var(--f-num);font-weight:700;font-size:19px;line-height:1;text-align:center;min-width:54px;padding:8px 4px;border-radius:8px;background:#0d1621;border:1px solid var(--line);font-variant-numeric:tabular-nums}
+.rank small{display:block;font-size:9.5px;font-weight:400;color:var(--ink-3);margin-top:2px;letter-spacing:.04em}
+.rank.win{background:#10291f;border-color:#2a5c45;color:var(--good)}
+.rank.top{border-color:#4a3d1f;color:var(--gold)}
+.m-body{min-width:0}
+.m-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.m-map{font-weight:700;font-size:14.5px}
+.m-date{font-family:var(--f-num);font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.m-line{font-family:var(--f-disp);font-size:9.5px;font-weight:700;letter-spacing:.08em;padding:1px 5px;border-radius:3px;border:1px solid var(--line-2);color:var(--ink-3)}
+.m-line.full{color:var(--gold);border-color:#4a3d1f}
+.mems{display:flex;flex-direction:column;gap:3px;margin-top:7px}
+.mem{display:grid;grid-template-columns:1fr auto;gap:10px;font-size:12.5px;align-items:baseline}
+.mem .mn{display:flex;align-items:baseline;font-weight:600;min-width:0}
+.mem .mn .nm-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.mem .mv{font-family:var(--f-num);font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.mem .mv b{color:var(--ink);font-weight:700}
+.mem.rnd .mn,.mem.rnd .mv{color:var(--ink-3);font-weight:400}
+.mem.is-pom .mn{color:var(--gold)}
+.pom-badge{flex:none;font-family:var(--f-disp);font-size:8.5px;font-weight:700;line-height:1.5;letter-spacing:.08em;color:#17120a;background:var(--gold);border-radius:3px;padding:0 4px;margin-left:6px}
+
+footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-3);text-align:center;line-height:1.7}
+
+@media (min-width:620px){
+  .tiles{grid-template-columns:repeat(4,1fr)}
+  .awards{grid-template-columns:1fr 1fr}
+  .matches{grid-template-columns:1fr 1fr}
+  .brand h1{font-size:19px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<header>
+  <div class="hud">
+    <div class="brand">
+      <span class="eyebrow">Kakao PC &middot; Ranked Squad</span>
+      <h1>TEAMPOP PUBG <b>ANALYTICS</b></h1>
+    </div>
+    <div class="hud-right">
+      <span class="meter" id="snap-chip" title="아티팩트 샌드박스는 외부 API 호출을 허용하지 않아 이 페이지는 고정된 스냅샷입니다."></span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="panel">
+    <div class="roster" id="roster"></div>
+    <div class="hint">
+      <span id="snap-note"></span>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div><span class="eyebrow">Ranked season</span><h2>멤버 경쟁전 전적</h2></div>
+    <span class="meta" id="season-meta"></span>
+  </div>
+  <div class="tbl-wrap"><table id="cmp-tbl"><thead></thead><tbody></tbody></table></div>
+  <p class="note" id="cmp-note" style="margin-top:9px"></p>
+  <div class="panel">
+    <div class="chips" id="metric-chips" role="group" aria-label="비교 지표"></div>
+    <p class="bar-cap" id="bar-cap"></p>
+    <div class="bars" id="bars"></div>
+  </div>
+
+  <div class="sec">
+    <div><span class="eyebrow">Hall of fame</span><h2>항목별 1위</h2></div>
+    <span class="meta" id="award-meta"></span>
+  </div>
+  <div class="awards" id="awards"></div>
+  <p class="note" id="award-note" style="margin-top:9px"></p>
+
+  <div class="sec">
+    <div><span class="eyebrow">Squad &middot; season</span><h2>스쿼드 시즌 전적</h2></div>
+    <span class="meta" id="squad-meta"></span>
+  </div>
+  <div class="tiles" id="squad-tiles"></div>
+  <p class="note" id="season-note" style="margin-top:9px"></p>
+
+  <div class="sec">
+    <div><span class="eyebrow">Placement trend</span><h2>스쿼드 등수 추이</h2></div>
+    <span class="meta" id="trend-meta"></span>
+  </div>
+  <div class="chart">
+    <div id="trend"></div>
+    <div class="legend">
+      <span><i style="background:#d7a33d"></i>등수 &mdash; 낮을수록 상위</span>
+      <span><i style="background:#3fc98d"></i>치킨</span>
+      <span><i style="background:#1b2a3a;border:1px solid #2e4056"></i>상위 25% 구간</span>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div><span class="eyebrow">Recent matches</span><h2>최근 경기</h2></div>
+    <span class="meta" id="match-meta"></span>
+  </div>
+  <div class="matches" id="matches"></div>
+
+  <footer>
+    데이터 출처: PUBG Developer API &middot; 경쟁전(competitive) 스쿼드만 집계 &middot; <span id="src-note"></span><br>
+    KRAFTON / PUBG Corporation과 무관한 비공식 도구입니다.
+  </footer>
+</div>
+
+<script>
+"use strict";
+const SEED = __SEED_JSON__;
+
+const MAPS = {
+  Baltic_Main:"에란겔", Erangel_Main:"에란겔", Desert_Main:"미라마", Savage_Main:"사녹",
+  DihorOtok_Main:"비켄디", Tiger_Main:"태이고", Neon_Main:"론도", Kiki_Main:"데스턴",
+  Summerland_Main:"카라킨", Chimera_Main:"파라모", Heaven_Main:"헤이븐", Range_Main:"훈련장"
+};
+const mapName = m => MAPS[m] || String(m || "알 수 없는 맵").replace(/_Main$/, "");
+
+/* lower:true means a smaller value is better (average placement) */
+const METRICS = [
+  {k:"kd",      label:"K/D",      fmt:v=>v.toFixed(2)},
+  {k:"avgDmg",  label:"평균 딜",   fmt:v=>Math.round(v).toLocaleString("ko-KR")},
+  {k:"bestDmg", label:"최고 딜",   fmt:v=>v?Math.round(v).toLocaleString("ko-KR"):"—",
+   title:r=>r.bestMatch
+     ? mapName(r.bestMatch.map)+" "+String(r.bestMatch.at||"").slice(5,10)+" · "+
+       r.bestMatch.rank+"위/"+(r.bestMatch.rosters||"?")+"팀 · "+
+       ((r.bestMatch.members[r.name]||{}).kills||0)+"킬 · 수집 "+r.bestN+"경기 중"
+     : "수집된 경기 없음"},
+  {k:"avgRank", label:"평균 등수", fmt:v=>v?v.toFixed(2):"—", lower:true},
+  {k:"t10Pct",  label:"TOP10률",   fmt:v=>v.toFixed(1)+"%"},
+  {k:"hsPct",   label:"헤드샷률",  fmt:v=>v.toFixed(1)+"%"},
+  {k:"rp",      label:"RP",        fmt:v=>Math.round(v).toLocaleString("ko-KR")},
+  {k:"rounds",  label:"판",        fmt:v=>Math.round(v).toLocaleString("ko-KR")}
+];
+
+const SQUAD = SEED.squad.slice();
+
+/* The API exposes no season dates: /seasons carries only isCurrentSeason and
+   isOffseason, match.seasonState reads "progress" on both sides of a changeover, and
+   pubg.com sends no CORS headers, so the patch notes cannot be read from a browser.
+   Season starts are therefore pinned from the official notes; seasonBoundary() below
+   covers any season not listed here.
+   Season 44: live maintenance 2026-11-04 09:00-17:30 KST = 00:00-08:30 UTC
+   ("라이브 서버 업데이트와 함께 순위표가 초기화됩니다", 업데이트 44.1 패치 노트). */
+const SEASON_STARTS = {
+  "division.bro.official.pc-2018-44": "2026-11-04T08:30:00Z"
+};
+
+function seasonBoundary(matches, players){
+  const per={};
+  matches.forEach(m=>Object.keys(m.members||{}).forEach(n=>{
+    (per[n]=per[n]||[]).push(String(m.at||""));
+  }));
+  Object.keys(per).forEach(n=>per[n].sort().reverse());
+  let best=null;
+  (players||[]).forEach(p=>{
+    const r=+((p.ranked||{}).rounds||0), list=per[p.name]||[];
+    if(r>0 && list.length>=r && (!best || r>best.r)) best={r:r, at:list[r-1]};
+  });
+  return best ? best.at : null;
+}
+/* pinned date when the season is known, otherwise fall back to the derived boundary */
+function seasonStartOf(seasonId, matches, players){
+  const pinned=SEASON_STARTS[seasonId];
+  if(pinned) return {at:pinned, src:"patch"};
+  const at=seasonBoundary(matches, players);
+  return at ? {at:at, src:"derived"} : {at:null, src:"none"};
+}
+
+const state = {
+  shard: SEED.shard, mode: SEED.mode, matchType: SEED.matchType,
+  seasonId: SEED.seasonId,
+  seasonStart: SEASON_STARTS[SEED.seasonId] || SEED.seasonStart || null,
+  seasonSrc: SEASON_STARTS[SEED.seasonId] ? "patch" : (SEED.seasonStart ? "derived" : "none"),
+  fetchedAt: SEED.fetchedAt, live: false,
+  players: SEED.players, matches: SEED.matches,
+  weapons: SEED.weapons || {}, telemetryAt: SEED.telemetry ? SEED.fetchedAt : null,
+  metric: "kd", sort: {k:"rp", dir:-1}
+};
+
+/* ---------- derive ---------- */
+function derive(p){
+  const s=p.ranked||{}, r=+(s.rounds||0);
+  return {
+    name:p.name, rounds:r, kills:+(s.kills||0), deaths:+(s.deaths||0),
+    kd:(+(s.kills||0))/Math.max(+(s.deaths||0),1),
+    avgDmg: r ? (+(s.damage||0))/r : 0,
+    avgRank: s.avgRank || null,
+    t10Pct: r ? (+(s.top10s||0))/r*100 : 0,
+    hsPct: s.kills ? (+(s.hsKills||0))/(+s.kills)*100 : 0,
+    rp:+(s.rp||0), tier:s.tier, subTier:s.subTier
+  };
+}
+/* The ranked season API has no "most damage in a round" field, so the best single
+   game is taken from the collected matches, which cover only part of the season. */
+function bestDamage(){
+  const out={};
+  SQUAD.forEach(n=>{ out[n]={dmg:0,n:0,match:null}; });
+  state.matches.forEach(m=>{
+    Object.keys(m.members||{}).forEach(n=>{
+      const o=out[n]; if(!o) return;
+      o.n++;
+      const d=+(m.members[n].damageDealt||0);
+      if(d>o.dmg){ o.dmg=d; o.match=m; }
+    });
+  });
+  return out;
+}
+const rows = () => {
+  const bd=bestDamage();
+  return state.players.map(p=>{
+    const r=derive(p), b=bd[p.name]||{dmg:0,n:0,match:null};
+    r.bestDmg=b.dmg; r.bestN=b.n; r.bestMatch=b.match;
+    return r;
+  });
+};
+const topCut = rosters => Math.max(Math.round((rosters||16)*0.25),1);
+const memberNames = m => Object.keys(m.members||{});
+const teamDmg = m => memberNames(m).reduce((s,n)=>s+(+(m.members[n].damageDealt||0)),0);
+const mmss = s => Math.floor(s/60)+":"+String(Math.round(s%60)).padStart(2,"0");
+const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const tierLabel = r => r.tier ? (r.tier+" "+(r.subTier||"")).trim() : "배치 전";
+
+/* Player of the Match: transparent weighted score over the members present. */
+function pomScore(m, name){
+  const s=m.members[name]||{}, t=s.t||null, names=memberNames(m);
+  const tk=names.reduce((a,n)=>a+(+(m.members[n].kills||0)),0);
+  const td=names.reduce((a,n)=>a+(+(m.members[n].damageDealt||0)),0);
+  const tv=Math.max.apply(null, names.map(n=>+(m.members[n].timeSurvived||0)).concat([1]));
+  const parts=[
+    ["킬 지분", tk ? (+(s.kills||0))/tk*25 : 0],
+    ["딜 지분", td ? (+(s.damageDealt||0))/td*25 : 0],
+    ["생존",    tv ? (+(s.timeSurvived||0))/tv*15 : 0],
+    ["소생",    (+(s.revives||0))*8],
+    ["기절",    (+(s.DBNOs||0))*4],
+    ["어시스트", (t ? t.tAssist : (+(s.assists||0)))*5],
+    ["클러치",  t ? t.clutch*10 : 0],
+    ["선봉",    t ? t.first*5 : 0]
+  ];
+  return {total:parts.reduce((a,p)=>a+p[1],0), parts:parts};
+}
+function pomOf(m){
+  const names=memberNames(m);
+  if(!names.length) return null;
+  let best=null;
+  names.forEach(n=>{
+    const sc=pomScore(m,n);
+    if(!best || sc.total>best.score) best={name:n, score:sc.total, parts:sc.parts};
+  });
+  return best;
+}
+
+/* ---------- awards ---------- */
+const AWARDS=[
+  {k:"killShare", icon:"🎯", title:"킬딸장인",   desc:"팀 전체 킬 중 개인 킬 비율", telem:false,
+   score:a=>a.teamKills? a.kills/a.teamKills : 0,
+   value:a=>(a.teamKills? (a.kills/a.teamKills*100).toFixed(1):"0.0")+"% · "+a.kills+"킬"},
+  {k:"dmgShare",  icon:"💥", title:"딜딸장인", desc:"팀 전체 데미지 중 개인 비중", telem:false,
+   score:a=>a.teamDmg? a.dmg/a.teamDmg : 0,
+   value:a=>(a.teamDmg? (a.dmg/a.teamDmg*100).toFixed(1):"0.0")+"% · "+Math.round(a.dmg).toLocaleString("ko-KR")+"딜"},
+  {k:"revive",    icon:"🛟", title:"생명의 은인", desc:"팀원 소생 횟수 및 소생 시간", telem:false,
+   score:a=>a.revives + (a.revN? 1/(1+a.revSec/Math.max(a.revN,1)) : 0),
+   value:a=>a.revives+"회"+(a.revN? " · 평균 "+Math.round(a.revSec/a.revN)+"초" : "")},
+  {k:"clutch",    icon:"🩸", title:"위기 해결사", desc:"팀원이 모두 쓰러진 상황에서 교전 성공", telem:true,
+   score:a=>a.clutch, value:a=>a.clutch+"킬"},
+  {k:"headshot",  icon:"💀", title:"에임 장인",   desc:"헤드샷 킬 비율", telem:false, minKills:5,
+   score:a=>a.kills>=5? a.hs/a.kills : -1,
+   value:a=>(a.kills? (a.hs/a.kills*100).toFixed(1):"0.0")+"% · "+a.hs+"/"+a.kills},
+  {k:"weapon",    icon:"🔫", title:"무기 장인",   desc:"무기별 킬 및 데미지", telem:true,
+   score:a=>a.topWeapN, value:a=>a.topWeapN? a.topWeap+" "+a.topWeapN+"킬" : "기록 없음"},
+  {k:"survival",  icon:"🏃", title:"생존 전문가", desc:"생존 시간과 최종 순위", telem:false,
+   score:a=>a.n? a.surv/a.n : 0,
+   value:a=>a.n? mmss(a.surv/a.n)+" · 평균 "+(a.rankSum/a.n).toFixed(1)+"위" : "—"},
+  {k:"first",     icon:"⚔️", title:"선봉장",     desc:"팀에서 가장 먼저 킬 기록", telem:true,
+   score:a=>a.first, value:a=>a.first+"경기 선취"},
+  {k:"nade",      icon:"🧨", title:"폭파 전문가", desc:"수류탄 등 투척 무기 킬", telem:true,
+   score:a=>a.nade, value:a=>a.nade+"킬"},
+  {k:"team",      icon:"🤝", title:"팀워크왕",   desc:"소생, 팀원 지원, 교전 지원", telem:false,
+   score:a=>a.revives*2 + a.assistEff + a.dbnoAssist,
+   value:a=>"소생 "+a.revives+" · 지원 "+a.assistEff+" · 기절 "+a.dbnoAssist},
+  {k:"swim",      icon:"🏊", title:"수영 장인",   desc:"물에서 보낸 시간과 헤엄친 거리", telem:true,
+   score:a=>a.swimSec,
+   value:a=>Math.round(a.swimSec)+"초 · "+Math.round(a.swimDist)+"m"},
+  {k:"fly",       icon:"🪂", title:"비행 장인",   desc:"글라이더·구조용 비행정 탑승 시간", telem:true,
+   score:a=>a.flySec,
+   value:a=>Math.round(a.flySec)+"초 · "+a.flyN+"회 탑승"+
+     (a.n? " · 낙하 평균 "+Math.round(a.chuteDist/a.n)+"m" : "")},
+  {k:"drive",     icon:"🚗", title:"장거리운전 장인", desc:"경기당 평균 운전 시간 (운전석 기준)", telem:true,
+   score:a=>a.n? a.driveSec/a.n : 0,
+   value:a=>a.n? "경기당 "+mmss(a.driveSec/a.n)+" · 총 "+Math.round(a.driveSec/60)+"분 · "+
+     (a.rideDist/1000).toFixed(1)+"km" : "—"}
+];
+
+function awardStats(){
+  const acc={}, hasT=state.matches.some(m=>memberNames(m).some(n=>m.members[n].t));
+  SQUAD.forEach(n=>{ acc[n]={name:n,n:0,kills:0,dmg:0,teamKills:0,teamDmg:0,hs:0,surv:0,
+    rankSum:0,revives:0,assists:0,dbno:0,clutch:0,first:0,nade:0,tAssist:0,revSec:0,revN:0,
+    swimSec:0,swimDist:0,flySec:0,flyN:0,chuteSec:0,chuteDist:0,
+    driveSec:0,driveN:0,rideDist:0,
+    topWeap:"",topWeapN:0,assistEff:0,dbnoAssist:0}; });
+  state.matches.forEach(m=>{
+    const names=memberNames(m);
+    const tk=names.reduce((s,n)=>s+(+(m.members[n].kills||0)),0);
+    const td=names.reduce((s,n)=>s+(+(m.members[n].damageDealt||0)),0);
+    names.forEach(n=>{
+      const a=acc[n]; if(!a) return;
+      const s=m.members[n], t=s.t||null;
+      a.n++; a.kills+=+(s.kills||0); a.dmg+=+(s.damageDealt||0);
+      a.teamKills+=tk; a.teamDmg+=td;
+      a.hs+=+(s.headshotKills||0); a.surv+=+(s.timeSurvived||0);
+      a.rankSum+=+(m.rank||0); a.revives+=+(s.revives||0);
+      a.assists+=+(s.assists||0); a.dbno+=+(s.DBNOs||0);
+      a.rideDist+=+(s.rideDistance||0);
+      if(t){ a.clutch+=t.clutch||0; a.first+=t.first||0; a.nade+=t.nade||0;
+             a.tAssist+=t.tAssist||0; a.revSec+=t.revSec||0; a.revN+=t.revN||0;
+             a.swimSec+=t.swimSec||0; a.swimDist+=t.swimDist||0;
+             a.flySec+=t.flySec||0; a.flyN+=t.flyN||0;
+             a.chuteSec+=t.chuteSec||0; a.chuteDist+=t.chuteDist||0;
+             a.driveSec+=t.driveSec||0; a.driveN+=t.driveN||0; }
+    });
+  });
+  SQUAD.forEach(n=>{
+    const a=acc[n], w=(state.weapons||{})[n];
+    if(w && w.length){ a.topWeap=w[0][0]; a.topWeapN=w[0][1]; }
+    a.assistEff = hasT ? a.tAssist : a.assists;
+    a.dbnoAssist = Math.max(a.dbno - a.kills, 0);
+  });
+  return {acc:acc, hasT:hasT};
+}
+function renderAwards(){
+  const {acc,hasT}=awardStats();
+  const list=SQUAD.map(n=>acc[n]).filter(a=>a.n>0);
+  document.getElementById("award-meta").textContent =
+    state.matches.length ? "시즌 "+state.matches.length+"경기 기준" : "";
+  const el=document.getElementById("awards");
+  if(!list.length){ el.innerHTML='<p class="note">집계할 경기가 없습니다.</p>'; return; }
+  el.innerHTML=AWARDS.map(aw=>{
+    const blocked = aw.telem && !hasT;
+    let win=null, top=-Infinity;
+    if(!blocked){
+      list.forEach(a=>{
+        const sc=aw.score(a);
+        if(sc>top){ top=sc; win=a; }
+      });
+    }
+    const empty = blocked || !win || top<=0;
+    return '<div class="award'+(empty?" none":"")+'">'+
+      '<span class="aw-ico" aria-hidden="true">'+aw.icon+'</span>'+
+      '<span class="aw-mid"><span class="aw-t">'+esc(aw.title)+'</span>'+
+      '<span class="aw-d">'+esc(aw.desc)+"</span></span>"+
+      '<span class="aw-r"><span class="aw-n">'+
+      (empty ? (blocked ? "정밀 분석 필요" : "해당 없음") : esc(win.name))+
+      '</span><span class="aw-v">'+
+      (empty ? (blocked ? "텔레메트리 미집계" : "기록 없음") : esc(aw.value(win)))+
+      "</span></span></div>";
+  }).join("");
+  document.getElementById("award-note").textContent = hasT
+    ? "위기 해결사·무기 장인·선봉장·폭파 전문가는 경기 텔레메트리에서 계산했습니다" +
+      (state.telemetryAt ? " (" + state.telemetryAt + " 기준)." : ".") +
+      " 에임 장인은 5킬 이상인 멤버만 후보입니다."
+    : "위기 해결사·무기 장인·선봉장·폭파 전문가는 경기 텔레메트리가 있어야 계산됩니다. 상단 갱신 패널의 정밀 분석을 실행하세요.";
+}
+
+/* ---------- render ---------- */
+function renderTable(){
+  const data=rows();
+  const played=data.filter(r=>r.rounds>0).length;
+  document.getElementById("season-meta").textContent =
+    "시즌 "+String(state.seasonId).replace(/^division\.bro\.official\./,"")+" · 기록 "+played+"/"+data.length+"명";
+  const cols=[{k:"name",label:"멤버"},{k:"tier",label:"티어"}].concat(METRICS);
+  const s=state.sort;
+  document.querySelector("#cmp-tbl thead").innerHTML="<tr>"+cols.map(c=>
+    "<th"+(s.k===c.k?' aria-sort="'+(s.dir<0?"descending":"ascending")+'"':"")+
+    '><button type="button" data-sort="'+c.k+'">'+esc(c.label)+"</button></th>").join("")+"</tr>";
+  const met=METRICS.filter(m=>m.k===s.k)[0];
+  data.sort((a,b)=>{
+    if(s.k==="name") return s.dir*a.name.localeCompare(b.name);
+    if(s.k==="tier") return s.dir*((b.rp||0)-(a.rp||0));
+    const av=a[s.k]||0, bv=b[s.k]||0;
+    const d=(met && met.lower) ? av-bv : bv-av;
+    return s.dir<0 ? d : -d;
+  });
+  document.querySelector("#cmp-tbl tbody").innerHTML=data.map(r=>
+    '<tr><td class="name">'+esc(r.name)+'</td><td class="tier">'+esc(tierLabel(r))+"</td>"+
+    METRICS.map(m=>{
+      const tip = m.title ? m.title(r) : "";
+      return "<td"+(tip?' title="'+esc(tip)+'"':"")+">"+esc(m.fmt(r[m.k]||0))+"</td>";
+    }).join("")+"</tr>").join("");
+  const cov=data.filter(r=>r.bestN>0);
+  document.getElementById("cmp-note").textContent = cov.length
+    ? "최고 딜은 시즌 경기 중 단일 경기 최고값입니다. 경쟁전 시즌 API에 경기별 최고 딜 항목이 없어 경기 데이터에서 계산했고, 스쿼드 2인 이상이 함께한 경기만 모으므로 멤버별 "+
+      Math.min.apply(null,cov.map(r=>r.bestN))+"~"+Math.max.apply(null,cov.map(r=>r.bestN))+
+      "경기 기준입니다. 나머지 열은 경쟁전 API의 시즌 전체 값입니다."
+    : "";
+  document.querySelectorAll("#cmp-tbl thead button").forEach(b=>{
+    b.onclick=()=>{
+      const kk=b.dataset.sort;
+      state.sort = state.sort.k===kk ? {k:kk,dir:-state.sort.dir} : {k:kk,dir:(kk==="name"?1:-1)};
+      renderTable();
+    };
+  });
+}
+function renderBars(){
+  const m=METRICS.filter(x=>x.k===state.metric)[0]||METRICS[0];
+  document.getElementById("metric-chips").innerHTML=METRICS.map(x=>
+    '<button type="button" data-m="'+x.k+'" aria-pressed="'+(x.k===state.metric)+'">'+
+    esc(x.label)+"</button>").join("");
+  document.querySelectorAll("#metric-chips button").forEach(b=>{
+    b.onclick=()=>{ state.metric=b.dataset.m; renderBars(); };
+  });
+  document.getElementById("bar-cap").textContent =
+    m.label + (m.lower ? " — 막대가 짧을수록 상위" : " — 막대가 길수록 상위");
+  const data=rows().filter(r=>r.rounds>0);
+  const el=document.getElementById("bars");
+  if(!data.length){ el.innerHTML='<p class="note">경쟁전 기록이 있는 멤버가 없습니다.</p>'; return; }
+  data.sort((a,b)=> m.lower ? (a[m.k]||Infinity)-(b[m.k]||Infinity) : (b[m.k]||0)-(a[m.k]||0));
+  const max=Math.max.apply(null, data.map(r=>r[m.k]||0).concat([1e-9]));
+  el.innerHTML=data.map((r,i)=>{
+    const v=r[m.k]||0, pct=v>0 ? Math.max(v/max*100, 1.5) : 0;
+    return '<div class="bar-row'+(i===0?" best":"")+'" title="'+
+      esc(r.name+" · "+m.label+" "+m.fmt(v))+'"><span class="nm">'+esc(r.name)+
+      '</span><span class="track"><span class="fill" style="width:'+pct.toFixed(1)+
+      '%"></span></span><span class="vl">'+esc(m.fmt(v))+"</span></div>";
+  }).join("");
+}
+function renderSquadTiles(){
+  const ms=state.matches.filter(m=>m.rank!=null);
+  const span=ms.length
+    ? String(ms[ms.length-1].at||"").slice(5,10)+" ~ "+String(ms[0].at||"").slice(5,10)
+    : "";
+  document.getElementById("squad-meta").textContent =
+    ms.length ? ms.length+"경기 · "+span+" · 2인 이상 동반" : "";
+  const sn=document.getElementById("season-note");
+  if(state.seasonStart){
+    const label=new Date(state.seasonStart).toLocaleString("ko-KR",
+      {month:"long", day:"numeric", hour:"2-digit", minute:"2-digit"});
+    sn.textContent="시즌 "+String(state.seasonId).replace(/^.*-/,"")+" 시작 "+label+
+      (state.seasonSrc==="patch"
+        ? " — 공식 패치 노트의 라이브 점검 종료 시각으로 고정했습니다."
+        : " — API에 시즌 날짜가 없어 멤버별 시즌 판수에서 역산했습니다.")+
+      " 이후의 경쟁전 스쿼드 경기만 집계합니다.";
+  }else{
+    sn.textContent="";
+  }
+  if(!ms.length){
+    document.getElementById("squad-tiles").innerHTML=
+      '<p class="note">경쟁전 스쿼드 경기를 찾지 못했습니다. 상단 갱신에서 최신 전적을 가져오세요.</p>';
+    return;
+  }
+  const avg=ms.reduce((s,m)=>s+m.rank,0)/ms.length;
+  const wins=ms.filter(m=>m.rank===1).length;
+  const top=ms.filter(m=>m.rank<=topCut(m.rosters)).length;
+  const best=Math.min.apply(null, ms.map(m=>m.rank));
+  const dmg=ms.reduce((s,m)=>s+teamDmg(m),0)/ms.length;
+  const tiles=[
+    {k:"평균 등수", cls:"hero", v:avg.toFixed(1), s:"최고 "+best+"위 · "+ms.length+"경기"},
+    {k:"상위 25%", v:(top/ms.length*100).toFixed(0)+"%", s:top+" / "+ms.length+"경기"},
+    {k:"치킨", v:String(wins), s:wins?(wins/ms.length*100).toFixed(1)+"%":"최근 기록 없음"},
+    {k:"팀 평균 딜", v:Math.round(dmg).toLocaleString("ko-KR"), s:"경기당 멤버 합계"}
+  ];
+  document.getElementById("squad-tiles").innerHTML=tiles.map(x=>
+    '<div class="tile '+(x.cls||"")+'"><span class="k">'+esc(x.k)+'</span><span class="v">'+
+    esc(x.v)+'</span><span class="s">'+esc(x.s)+'</span></div>').join("");
+}
+function renderTrend(){
+  const fin=state.matches.filter(m=>m.rank!=null).slice().reverse();
+  const el=document.getElementById("trend");
+  document.getElementById("trend-meta").textContent = fin.length ? fin.length+"경기" : "";
+  if(fin.length<2){
+    el.innerHTML='<p class="note">등수 추이를 그리려면 경기가 2개 이상 필요합니다.</p>';
+    return;
+  }
+  const W=640,H=200,L=34,R=14,T=14,B=28, iw=W-L-R, ih=H-T-B;
+  const maxR=Math.max.apply(null, fin.map(m=>m.rosters||16).concat(fin.map(m=>m.rank)).concat([10]));
+  const x=i=>L+i*iw/(fin.length-1);
+  const y=r=>T+((r-1)/Math.max(maxR-1,1))*ih;
+  const cut=topCut(Math.round(fin.reduce((s,m)=>s+(m.rosters||16),0)/fin.length));
+  const line=fin.map((m,i)=>(i?"L":"M")+x(i).toFixed(1)+" "+y(m.rank).toFixed(1)).join(" ");
+  const ticks=[1,cut,Math.round(maxR/2),maxR].filter((v,i,a)=>a.indexOf(v)===i && v>=1 && v<=maxR);
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="최근 '+fin.length+'경기 스쿼드 등수 추이">'+
+    '<rect x="'+L+'" y="'+T+'" width="'+iw+'" height="'+Math.max(y(cut)-T,0).toFixed(1)+'" fill="#1b2a3a"/>'+
+    ticks.map(t=>'<line x1="'+L+'" y1="'+y(t).toFixed(1)+'" x2="'+(W-R)+'" y2="'+y(t).toFixed(1)+
+      '" stroke="#233141" stroke-width="1" fill="none"/><text x="'+(L-7)+'" y="'+(y(t)+4).toFixed(1)+
+      '" text-anchor="end" fill="#6a7d92" font-size="11" font-family="monospace">'+t+"</text>").join("")+
+    '<path d="'+line+'" fill="none" stroke="#d7a33d" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'+
+    fin.map((m,i)=>'<circle cx="'+x(i).toFixed(1)+'" cy="'+y(m.rank).toFixed(1)+'" r="'+
+      (m.rank===1?6:4.5)+'" fill="'+(m.rank===1?"#3fc98d":"#d7a33d")+
+      '" stroke="#111924" stroke-width="2"><title>'+
+      esc(mapName(m.map)+" · "+m.rank+"위/"+(m.rosters||"?")+"팀 · "+
+      memberNames(m).length+"인 · 팀 "+Math.round(teamDmg(m))+"딜")+"</title></circle>").join("")+
+    '<text x="'+L+'" y="'+(H-8)+'" fill="#6a7d92" font-size="11" font-family="monospace">오래된 경기</text>'+
+    '<text x="'+(W-R)+'" y="'+(H-8)+'" text-anchor="end" fill="#6a7d92" font-size="11" font-family="monospace">최근</text>'+
+    "</svg>";
+}
+function renderMatches(){
+  document.getElementById("match-meta").textContent=state.matches.length+"경기 · 경쟁전";
+  if(!state.matches.length){
+    document.getElementById("matches").innerHTML='<p class="note">표시할 경기가 없습니다.</p>';
+    return;
+  }
+  const full=SQUAD.length;
+  document.getElementById("matches").innerHTML=state.matches.map(m=>{
+    const tot=m.rosters||null, names=memberNames(m), pom=pomOf(m);
+    const cls = m.rank===1 ? "win" : (m.rank!=null && m.rank<=topCut(tot) ? "top" : "");
+    const d=m.at?new Date(m.at):null;
+    const date=d ? (d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+
+                   String(d.getMinutes()).padStart(2,"0") : "";
+    const mems=SQUAD.filter(n=>names.indexOf(n)>-1).map(n=>{
+      const s=m.members[n]||{}, t=s.t||null;
+      const isPom = pom && pom.name===n;
+      const extra=[];
+      if(t && t.clutch) extra.push("클러치 "+t.clutch);
+      if(t && t.first) extra.push("선봉");
+      if(s.revives) extra.push("소생 "+s.revives);
+      if(s.deathType==="byzone") extra.push("블루존");
+      const tip = isPom
+        ? "POM "+Math.round(pom.score)+"점 — "+pom.parts.filter(p=>p[1]>0)
+            .sort((a,b)=>b[1]-a[1]).map(p=>p[0]+" "+p[1].toFixed(1)).join(", ")
+        : n;
+      return '<div class="mem'+(isPom?" is-pom":"")+'" title="'+esc(tip)+
+        '"><span class="mn"><span class="nm-t">'+esc(n)+"</span>"+
+        (isPom?'<span class="pom-badge">POM</span>':"")+'</span><span class="mv"><b>'+
+        (s.kills||0)+"</b>킬 <b>"+Math.round(s.damageDealt||0)+"</b>딜 "+
+        mmss(s.timeSurvived||0)+(extra.length?" · "+esc(extra.join(" · ")):"")+"</span></div>";
+    }).join("");
+    const rnds=(m.randoms||[]).filter(Boolean).map(n=>
+      '<div class="mem rnd"><span class="mn">'+esc(n)+'</span><span class="mv">랜덤</span></div>').join("");
+    return '<div class="match"><div class="rank '+cls+'">'+
+      (m.rank==null ? "—" : (m.rank===1 ? "WIN" : m.rank))+
+      "<small>"+(tot ? "/"+tot+"팀" : "등수")+"</small></div>"+
+      '<div class="m-body"><div class="m-top"><span class="m-map">'+esc(mapName(m.map))+
+      '</span><span class="m-date">'+esc(date)+'</span><span class="m-line'+
+      (names.length===full?" full":"")+'">'+names.length+"인"+
+      (names.length===full?" 전원":"")+'</span></div><div class="mems">'+mems+rnds+"</div></div></div>";
+  }).join("");
+}
+function renderRoster(){
+  document.getElementById("roster").innerHTML=SQUAD.map(n=>
+    '<span class="rchip"><b>'+esc(n)+"</b></span>").join("");
+}
+function renderAll(){
+  document.getElementById("src-note").textContent = state.fetchedAt + " 조회 기준";
+  renderRoster(); renderTable(); renderBars(); renderAwards();
+  renderSquadTiles(); renderTrend(); renderMatches(); renderSnapshot();
+}
+
+/* ---------- snapshot labels ---------- */
+function renderSnapshot(){
+  document.getElementById("snap-chip").textContent = "SNAPSHOT " + state.fetchedAt;
+  document.getElementById("snap-note").innerHTML =
+    "이 페이지는 <b>" + esc(state.fetchedAt) + " 기준 스냅샷</b>입니다. 아티팩트 샌드박스는 외부 API 호출을 허용하지 않아 " +
+    "페이지가 <code>api.pubg.com</code>을 직접 조회할 수 없습니다. 최신 전적이 필요하면 다시 만들어 같은 주소로 게시해야 합니다.";
+}
+renderAll();
+</script>
+
+</body>
+</html>

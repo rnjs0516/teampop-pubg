@@ -1,0 +1,11 @@
+# API 키 - 절대 커밋하지 않습니다
+.env
+.env.local
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+
+# 로컬 로그
+*.log
