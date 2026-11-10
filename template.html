@@ -162,7 +162,8 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
       <h1>TEAMPOP PUBG <b>ANALYTICS</b></h1>
     </div>
     <div class="hud-right">
-      <span class="meter" id="snap-chip" title="아티팩트 샌드박스는 외부 API 호출을 허용하지 않아 이 페이지는 고정된 스냅샷입니다."></span>
+      <span class="meter" id="meter" title="개발용 키는 분당 10회 제한입니다. 브라우저가 응답 헤더를 읽을 수 없어 이 페이지가 직접 센 값입니다.">RATE <b id="meter-n">0</b>/10</span>
+      <button class="icon-btn" id="toggle-panel" aria-expanded="false">갱신</button>
     </div>
   </div>
 </header>
@@ -173,6 +174,19 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
     <div class="roster" id="roster"></div>
     <div class="hint">
       <span id="snap-note"></span>
+    </div>
+    <div id="refresh" hidden>
+      <label for="f-key" style="margin-top:15px">PUBG API 키</label>
+      <input id="f-key" type="password" autocomplete="off" spellcheck="false" placeholder="developer.pubg.com 발급 키">
+      <div style="display:flex;gap:9px;margin-top:12px;flex-wrap:wrap">
+        <button class="primary" id="go">최신 전적 가져오기</button>
+        <button id="deep" title="경기별 텔레메트리를 내려받아 위기 해결사·무기 장인·선봉장·폭파 전문가·수영·비행·운전을 다시 계산합니다">정밀 분석</button>
+        <button id="forget" title="이 브라우저에 저장된 키를 지웁니다">키 삭제</button>
+      </div>
+      <div class="hint">
+        <span>키는 <b>이 브라우저에만</b> 저장됩니다. 페이지 소스나 저장소에 들어가지 않습니다 &mdash; 브라우저가 <code>api.pubg.com</code>을 직접 호출합니다. 갱신 1회에 제한 대상 호출 <b id="cost">6</b>회를 씁니다. 정밀 분석은 제한 대상이 아니지만 경기당 약 1.5MB를 내려받습니다.</span>
+      </div>
+      <div id="err" class="err" hidden></div>
     </div>
   </div>
 
@@ -255,7 +269,37 @@ const METRICS = [
   {k:"rounds",  label:"판",        fmt:v=>Math.round(v).toLocaleString("ko-KR")}
 ];
 
+const THROWABLE = {
+  ProjGrenade_C:"수류탄", ProjMolotov_C:"화염병", ProjC4_C:"C4",
+  ProjStickyGrenade_C:"점착 폭탄", ProjBluezoneGrenade_C:"블루존 수류탄",
+  ProjSpawnMolotovFireDebuff_C:"화염병"
+};
+const WEAPONS = {
+  WeapHK416_C:"M416", WeapAUG_C:"AUG", WeapM16A4_C:"M16A4", WeapACE32_C:"ACE32",
+  WeapBerylM762_C:"Beryl M762", WeapAK47_C:"AKM", WeapG36C_C:"G36C", "WeapSCAR-L_C":"SCAR-L",
+  WeapQBZ95_C:"QBZ95", WeapMk47Mutant_C:"Mk47", WeapGroza_C:"Groza", WeapFNFal_C:"SLR",
+  WeapMk14_C:"Mk14", WeapMk12_C:"Mk12", WeapMini14_C:"Mini 14", WeapSKS_C:"SKS",
+  WeapQBU88_C:"QBU", WeapVSS_C:"VSS", WeapKar98k_C:"Kar98k", WeapM24_C:"M24",
+  WeapAWM_C:"AWM", WeapWin1894_C:"Win94", WeapMosinNagant_C:"Mosin", WeapLynxAMR_C:"Lynx AMR",
+  WeapUZI_C:"Micro UZI", WeapUMP_C:"UMP45", WeapVector_C:"Vector", WeapThompson_C:"Tommy Gun",
+  WeapMP5K_C:"MP5K", WeapBizonPP19_C:"PP-19", WeapP90_C:"P90", WeapMP9_C:"MP9",
+  WeapDP28_C:"DP-28", WeapM249_C:"M249", WeapMG3_C:"MG3", WeapBerreta686_C:"S686",
+  WeapWinchester_C:"S1897", WeapSaiga12_C:"S12K", WeapDP12_C:"DBS", WeapSawnoff_C:"Sawed-off",
+  WeapOriginS12_C:"O12", WeapM1911_C:"P1911", WeapM9_C:"P92", WeapNagantRevolver_C:"R1895",
+  WeapRhino_C:"R45", WeapG18_C:"P18C", WeapSkorpion_C:"Skorpion", WeapDesertEagle_C:"Deagle",
+  WeapCrossbow_1_C:"석궁", WeapPan_C:"프라이팬", WeapMachete_C:"마체테", WeapM79_C:"M79"
+};
+function weapLabel(raw){
+  if(!raw) return "기타";
+  if(THROWABLE[raw]) return THROWABLE[raw];
+  if(WEAPONS[raw]) return WEAPONS[raw];
+  let s=String(raw);
+  ["Weap","Proj","BP_"].forEach(pre=>{ if(s.indexOf(pre)===0) s=s.slice(pre.length); });
+  return s.replace(/_C$/,"").replace(/_/g," ");
+}
+
 const SQUAD = SEED.squad.slice();
+const CALL_COST = 2 + SEED.squad.length;   /* players + seasons + one ranked call per member */
 
 /* The API exposes no season dates: /seasons carries only isCurrentSeason and
    isOffseason, match.seasonState reads "progress" on both sides of a changeover, and
@@ -299,6 +343,342 @@ const state = {
   weapons: SEED.weapons || {}, telemetryAt: SEED.telemetry ? SEED.fetchedAt : null,
   metric: "kd", sort: {k:"rp", dir:-1}
 };
+
+/* ---------- live refresh ----------
+   GitHub Pages sends no CSP and api.pubg.com answers with
+   Access-Control-Allow-Origin: *, so the browser can query PUBG directly.
+   The key lives only in this viewer's localStorage - never in the repo. */
+const LS = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+};
+const K_KEY="teampop.key", K_HITS="teampop.hits";
+
+/* api.pubg.com exposes only Content-Length through CORS, so X-Ratelimit-* cannot be
+   read here - this counts the limited calls itself over a 60s window.
+   /matches and the telemetry CDN are exempt and are not counted. */
+let hits = (()=>{ try{ return JSON.parse(LS.get(K_HITS)||"[]"); }catch(e){ return []; } })();
+function pruneHits(){
+  const cut=Date.now()-60000;
+  hits=hits.filter(x=>x>cut);
+  LS.set(K_HITS,JSON.stringify(hits));
+  return hits.length;
+}
+function paintMeter(){
+  const n=pruneHits(), el=document.getElementById("meter");
+  if(!el) return;
+  document.getElementById("meter-n").textContent=n;
+  el.classList.toggle("hot", n>=8);
+}
+function spend(){ hits.push(Date.now()); LS.set(K_HITS,JSON.stringify(hits)); paintMeter(); }
+const budgetLeft = () => 10 - pruneHits();
+
+const enc = s => encodeURIComponent(s);
+function apiKey(){ return (document.getElementById("f-key").value||"").trim(); }
+
+async function api(path, opts){
+  const counts = !(opts && opts.counts === false);
+  const key=apiKey();
+  if(!key) throw new Error("API 키를 입력하세요. developer.pubg.com에서 발급할 수 있습니다.");
+  const url="https://api.pubg.com/shards/"+state.shard+"/"+String(path).replace(/^\//,"");
+  let res;
+  try{
+    res=await fetch(url,{headers:{Authorization:"Bearer "+key,Accept:"application/vnd.api+json"}});
+  }catch(e){
+    throw new Error("api.pubg.com에 연결하지 못했습니다. 네트워크를 확인하세요.");
+  }
+  if(counts) spend();
+  if(res.status===401) throw new Error("API 키 인증에 실패했습니다. 키를 다시 확인하세요.");
+  if(res.status===404) throw new Error("데이터를 찾지 못했습니다. 멤버 닉네임이 바뀌었을 수 있습니다.");
+  if(res.status===429) throw new Error("호출 제한(429)에 걸렸습니다. 분당 10회 제한이므로 1분 뒤 다시 시도하세요.");
+  if(!res.ok) throw new Error("PUBG API 오류 HTTP "+res.status);
+  return res.json();
+}
+
+async function currentSeason(){
+  const ck="teampop.season."+state.shard, cached=LS.get(ck);
+  if(cached){ try{ const o=JSON.parse(cached); if(Date.now()-o.t < 6*3600e3) return o.id; }catch(e){} }
+  const d=await api("seasons");
+  const cur=(d.data.find(s=>s.attributes.isCurrentSeason)||{}).id;
+  if(!cur) throw new Error("현재 시즌 정보를 찾지 못했습니다.");
+  LS.set(ck, JSON.stringify({id:cur,t:Date.now()}));
+  return cur;
+}
+
+/* rankedGameModeStats -> flat shape. The API returns kda, kdr, longestKill, playTime,
+   heals, boosts and weaponsAcquired as 0 here, so they are not used. */
+function normRanked(st){
+  st=st||{};
+  const r=+(st.roundsPlayed||0), cur=st.currentTier||{}, best=st.bestTier||{};
+  return {
+    rounds:r, kills:+(st.kills||0), deaths:+(st.deaths||0), wins:+(st.wins||0),
+    top10s:Math.round((+(st.top10Ratio||0))*r),
+    damage:+(st.damageDealt||0), hsKills:+(st.headshotKills||0),
+    assists:+(st.assists||0), dBNOs:+(st.dBNOs||0), revives:+(st.revives||0),
+    avgRank: st.avgRank ? +st.avgRank : null,
+    tier:cur.tier||null, subTier:cur.subTier||null,
+    bestTier:best.tier||null, bestSubTier:best.subTier||null,
+    rp:+(st.currentRankPoint||0), bestRp:+(st.bestRankPoint||0)
+  };
+}
+
+const KEEP=["kills","assists","DBNOs","damageDealt","winPlace","timeSurvived","headshotKills",
+            "longestKill","revives","deathType","walkDistance","rideDistance","swimDistance",
+            "weaponsAcquired","heals","boosts","killPlace"];
+
+/* keep a match only when it is a ranked squad game with 2+ members on one roster */
+function trimMatch(m, acctToName){
+  const a=m.data.attributes, inc=m.included||[];
+  if(a.gameMode!==state.mode || a.matchType!==state.matchType) return null;
+  const part={};
+  for(const it of inc){ if(it.type==="participant") part[it.id]=it.attributes.stats; }
+  let best=null, rosters=0;
+  for(const it of inc){
+    if(it.type!=="roster") continue;
+    rosters++;
+    const pids=(((it.relationships||{}).participants||{}).data||[]).map(d=>d.id);
+    const mem=pids.filter(p=>part[p] && acctToName[part[p].playerId]);
+    if(mem.length && (!best || mem.length>best.mem.length)) best={it:it,pids:pids,mem:mem};
+  }
+  if(!best || best.mem.length<2) return null;
+  const members={};
+  best.mem.forEach(p=>{
+    const st=part[p], o={};
+    KEEP.forEach(k=>{ o[k]=st[k]; });
+    members[acctToName[st.playerId]]=o;
+  });
+  return {id:m.data.id, at:a.createdAt, map:a.mapName, dur:a.duration,
+          rank:(best.it.attributes.stats||{}).rank, rosters:rosters, members:members,
+          randoms:best.pids.filter(p=>part[p] && !acctToName[part[p].playerId]).map(p=>part[p].name)};
+}
+
+function showErr(msg){
+  const e=document.getElementById("err");
+  e.textContent=msg; e.hidden=false;
+}
+
+async function run(){
+  const btn=document.getElementById("go");
+  document.getElementById("err").hidden=true;
+  if(!apiKey()){ showErr("API 키를 입력하세요."); return; }
+  LS.set(K_KEY, apiKey());
+  if(budgetLeft()<CALL_COST){
+    showErr("이번 1분 안에 남은 호출 여유가 부족합니다 ("+CALL_COST+"회 필요, "+budgetLeft()+"회 남음). 잠시 후 다시 시도하세요.");
+    return;
+  }
+  btn.disabled=true; btn.textContent="조회 중...";
+  try{
+    const pl=await api("players?filter[playerNames]="+SQUAD.map(enc).join(","));
+    const found=(pl.data||[]).map(p=>({
+      name:p.attributes.name, accountId:p.id,
+      matchIds:(((p.relationships||{}).matches||{}).data||[]).map(m=>m.id)
+    }));
+    if(!found.length) throw new Error("멤버를 찾지 못했습니다.");
+    const missing=SQUAD.filter(n=>!found.some(f=>f.name.toLowerCase()===n.toLowerCase()));
+    const acctToName={};
+    found.forEach(f=>{ acctToName[f.accountId]=f.name; });
+
+    const season=await currentSeason();
+    state.seasonId=season;
+
+    const players=[];
+    for(let i=0;i<found.length;i++){
+      const f=found[i];
+      btn.textContent="경쟁전 "+(i+1)+"/"+found.length;
+      let rk={};
+      try{
+        const d=await api("players/"+f.accountId+"/seasons/"+season+"/ranked");
+        rk=((d.data.attributes||{}).rankedGameModeStats||{})[state.mode]||{};
+      }catch(e){ rk={}; }
+      players.push({name:f.name, accountId:f.accountId, ranked:normRanked(rk)});
+    }
+    state.players=players;
+
+    /* /matches is exempt from the rate limit */
+    const union=[];
+    found.forEach(f=>f.matchIds.forEach(id=>{ if(union.indexOf(id)<0) union.push(id); }));
+    const out=[];
+    for(let i=0;i<union.length;i+=5){
+      btn.textContent="경기 "+Math.min(i+5,union.length)+"/"+union.length;
+      const chunk=await Promise.all(union.slice(i,i+5).map(id=>
+        api("matches/"+id,{counts:false}).then(m=>trimMatch(m,acctToName)).catch(()=>null)));
+      chunk.forEach(c=>{ if(c) out.push(c); });
+    }
+    out.sort((a,b)=>String(b.at||"").localeCompare(String(a.at||"")));
+    const sb=seasonStartOf(season, out, state.players);
+    state.seasonStart=sb.at; state.seasonSrc=sb.src;
+    state.matches = sb.at ? out.filter(m=>String(m.at||"")>=sb.at) : out;
+    state.live=true;
+    state.telemetryAt=null;        /* the match set changed - telemetry numbers are stale */
+    state.weapons={};
+    state.fetchedAt=new Date().toLocaleString("ko-KR");
+    if(missing.length) showErr("찾지 못한 멤버: "+missing.join(", "));
+    renderAll();
+  }catch(e){
+    showErr((e && e.message) || String(e));
+  }finally{
+    btn.disabled=false; btn.textContent="최신 전적 가져오기"; paintMeter();
+  }
+}
+
+/* ---- telemetry pass: clutch / first blood / throwables / weapons / swim / fly / drive ---- */
+function analyseTelemetry(events, acctByName, namesPresent){
+  const accts={}, out={};
+  namesPresent.forEach(n=>{
+    if(acctByName[n]) accts[acctByName[n]]=n;
+    out[n]={clutch:0, first:0, nade:0, tAssist:0, revSec:0, revN:0,
+            swimSec:0, swimDist:0, flySec:0, flyN:0, chuteSec:0, chuteDist:0,
+            driveSec:0, driveN:0, weapons:{}};
+  });
+  const ids=Object.keys(accts);
+  if(!ids.length) return out;
+  events.sort((a,b)=>String(a._D||"").localeCompare(String(b._D||"")));
+  const st={}; ids.forEach(a=>{ st[a]="alive"; });
+  const groggy={}, swimOpen={}, airExit={}, rideOpen={}, driveOpen={};
+  const AIRCRAFT={TransportAircraft:1, Aircraft:1};
+  const FLYRIDE={EmergencyPickup:1, Glider:1, MotorGlider:1};
+  let firstDone=false;
+  function closeDrive(a, t1){
+    const d=driveOpen[a];
+    delete driveOpen[a];
+    if(d && d.seat===0 && d.t && t1 && t1>=d.t && t1-d.t<=2400000){
+      const o=out[accts[a]];
+      o.driveSec+=(t1-d.t)/1000; o.driveN++;
+    }
+  }
+  for(const e of events){
+    const T=e._T;
+    if(T==="LogSwimStart"){
+      const a=(e.character||{}).accountId;
+      if(accts[a]) swimOpen[a]=Date.parse(e._D);
+    }else if(T==="LogSwimEnd"){
+      const a=(e.character||{}).accountId;
+      if(accts[a]){
+        const o=out[accts[a]], t0=swimOpen[a], t1=Date.parse(e._D);
+        o.swimDist+=+(e.swimDistance||0);
+        delete swimOpen[a];
+        if(t0 && t1 && t1>=t0 && t1-t0<=1800000) o.swimSec+=(t1-t0)/1000;
+      }
+    }else if(T==="LogVehicleRide"){
+      const a=(e.character||{}).accountId, vt=(e.vehicle||{}).vehicleType;
+      if(accts[a]){
+        if(FLYRIDE[vt]){
+          rideOpen[a]=Date.parse(e._D);
+        }else if(!AIRCRAFT[vt]){
+          let seat=e.seatIndex;
+          if(seat==null) seat=(e.vehicle||{}).seatIndex;
+          driveOpen[a]={t:Date.parse(e._D), seat:seat};   /* seat 0 is the driver */
+        }
+      }
+    }else if(T==="LogVehicleLeave"){
+      const a=(e.character||{}).accountId, vt=(e.vehicle||{}).vehicleType;
+      if(accts[a]){
+        if(AIRCRAFT[vt]){
+          airExit[a]=Date.parse(e._D);
+        }else if(FLYRIDE[vt]){
+          const o=out[accts[a]], t0=rideOpen[a], t1=Date.parse(e._D);
+          delete rideOpen[a];
+          if(t0 && t1 && t1>=t0 && t1-t0<=1800000){ o.flySec+=(t1-t0)/1000; o.flyN++; }
+        }else{
+          closeDrive(a, Date.parse(e._D));
+        }
+      }
+    }else if(T==="LogParachuteLanding"){
+      /* every player parachutes every match - kept apart from actual flying */
+      const a=(e.character||{}).accountId;
+      if(accts[a]){
+        const o=out[accts[a]], t0=airExit[a], t1=Date.parse(e._D);
+        o.chuteDist+=+(e.distance||0);
+        delete airExit[a];
+        if(t0 && t1 && t1>=t0 && t1-t0<=600000) o.chuteSec+=(t1-t0)/1000;
+      }
+    }else if(T==="LogPlayerMakeGroggy"){
+      const v=(e.victim||{}).accountId;
+      if(st[v]!==undefined) st[v]="groggy";
+      if(e.dBNOId!=null) groggy[e.dBNOId]=e._D;
+    }else if(T==="LogPlayerRevive"){
+      const v=(e.victim||{}).accountId, rv=(e.reviver||{}).accountId;
+      if(st[v]!==undefined) st[v]="alive";
+      if(accts[rv] && e.dBNOId!=null && groggy[e.dBNOId]){
+        const d=(Date.parse(e._D)-Date.parse(groggy[e.dBNOId]))/1000;
+        if(d>=0 && d<=300){ out[accts[rv]].revSec+=d; out[accts[rv]].revN++; }
+      }
+    }else if(T==="LogPlayerKillV2"){
+      const victim=(e.victim||{}).accountId, killer=(e.killer||{}).accountId;
+      const causer=((e.killerDamageInfo||{}).damageCauserName)||null;
+      if(accts[killer] && st[victim]===undefined && !e.isSuicide){
+        const nm=accts[killer];
+        const others=ids.filter(a=>a!==killer);
+        if(others.length && others.every(a=>st[a]==="groggy"||st[a]==="dead")) out[nm].clutch++;
+        if(!firstDone){ out[nm].first=1; firstDone=true; }
+        if(THROWABLE[causer]) out[nm].nade++;
+        if(causer) out[nm].weapons[causer]=(out[nm].weapons[causer]||0)+1;
+        (e.assists_AccountId||[]).forEach(a=>{
+          if(accts[a] && a!==killer) out[accts[a]].tAssist++;
+        });
+        const dm=(e.dBNOMaker||{}).accountId;
+        if(accts[dm] && dm!==killer) out[accts[dm]].tAssist++;
+      }
+      if(st[victim]!==undefined){
+        st[victim]="dead";
+        closeDrive(victim, Date.parse(e._D));   /* died at the wheel - no Leave event */
+      }
+    }
+  }
+  return out;
+}
+
+async function deepScan(){
+  const btn=document.getElementById("deep");
+  document.getElementById("err").hidden=true;
+  if(!apiKey()){ showErr("정밀 분석에도 API 키가 필요합니다 (경기 상세에서 텔레메트리 주소를 받습니다)."); return; }
+  if(!state.matches.length){ showErr("분석할 경기가 없습니다."); return; }
+  const acctByName={};
+  state.players.forEach(p=>{ acctByName[p.name]=p.accountId; });
+  btn.disabled=true;
+  const seasonWeapons={};
+  try{
+    for(let i=0;i<state.matches.length;i+=2){
+      btn.textContent="정밀 "+Math.min(i+2,state.matches.length)+"/"+state.matches.length;
+      await Promise.all(state.matches.slice(i,i+2).map(async m=>{
+        try{
+          const md=await api("matches/"+m.id,{counts:false});
+          const asset=(md.included||[]).filter(x=>x.type==="asset" &&
+            (x.attributes||{}).name==="telemetry")[0];
+          if(!asset) return;
+          const r=await fetch(asset.attributes.URL,{headers:{Accept:"application/json"}});
+          if(!r.ok) return;
+          const res=analyseTelemetry(await r.json(), acctByName, Object.keys(m.members));
+          Object.keys(res).forEach(n=>{
+            const o=res[n];
+            if(m.members[n]) m.members[n].t={
+              clutch:o.clutch, first:o.first, nade:o.nade, tAssist:o.tAssist,
+              revSec:o.revSec, revN:o.revN, swimSec:o.swimSec, swimDist:o.swimDist,
+              flySec:o.flySec, flyN:o.flyN, chuteSec:o.chuteSec, chuteDist:o.chuteDist,
+              driveSec:o.driveSec, driveN:o.driveN};
+            seasonWeapons[n]=seasonWeapons[n]||{};
+            Object.keys(o.weapons).forEach(w=>{
+              seasonWeapons[n][w]=(seasonWeapons[n][w]||0)+o.weapons[w];
+            });
+          });
+        }catch(e){ /* one bad match must not stop the pass */ }
+      }));
+    }
+    const weap={};
+    Object.keys(seasonWeapons).forEach(n=>{
+      weap[n]=Object.keys(seasonWeapons[n]).map(w=>[weapLabel(w),seasonWeapons[n][w]])
+        .sort((a,b)=>b[1]-a[1]).slice(0,8);
+    });
+    state.weapons=weap;
+    state.telemetryAt=new Date().toLocaleString("ko-KR");
+    renderAll();
+  }catch(e){
+    showErr((e && e.message) || String(e));
+  }finally{
+    btn.disabled=false; btn.textContent="정밀 분석";
+  }
+}
 
 /* ---------- derive ---------- */
 function derive(p){
@@ -661,18 +1041,39 @@ function renderRoster(){
     '<span class="rchip"><b>'+esc(n)+"</b></span>").join("");
 }
 function renderAll(){
-  document.getElementById("src-note").textContent = state.fetchedAt + " 조회 기준";
+  document.getElementById("cost").textContent=String(CALL_COST);
+  document.getElementById("src-note").textContent =
+    (state.live ? "브라우저에서 직접 조회 " : "") + state.fetchedAt + " 기준";
   renderRoster(); renderTable(); renderBars(); renderAwards();
-  renderSquadTiles(); renderTrend(); renderMatches(); renderSnapshot();
+  renderSquadTiles(); renderTrend(); renderMatches(); renderSnapshot(); paintMeter();
 }
 
-/* ---------- snapshot labels ---------- */
+/* ---------- labels + wire ---------- */
 function renderSnapshot(){
-  document.getElementById("snap-chip").textContent = "SNAPSHOT " + state.fetchedAt;
-  document.getElementById("snap-note").innerHTML =
-    "이 페이지는 <b>" + esc(state.fetchedAt) + " 기준 스냅샷</b>입니다. 아티팩트 샌드박스는 외부 API 호출을 허용하지 않아 " +
-    "페이지가 <code>api.pubg.com</code>을 직접 조회할 수 없습니다. 최신 전적이 필요하면 다시 만들어 같은 주소로 게시해야 합니다.";
+  document.getElementById("snap-note").innerHTML = state.live
+    ? "<b>" + esc(state.fetchedAt) + "</b>에 이 브라우저가 직접 조회한 결과입니다. 이 화면에만 반영되며, 공유 주소의 내용은 바뀌지 않습니다 &mdash; 모두에게 반영하려면 저장소 Actions 의 <b>Run workflow</b> 를 쓰세요."
+    : "<b>" + esc(state.fetchedAt) + "</b> 기준입니다. 우측 상단 <b>갱신</b> 에서 API 키를 넣으면 최신 전적을 바로 불러올 수 있습니다. 매일 09:00 에 자동으로도 갱신됩니다.";
 }
+
+const refresh=document.getElementById("refresh"), tgl=document.getElementById("toggle-panel");
+tgl.onclick=()=>{
+  const open=refresh.hidden;
+  refresh.hidden=!open;
+  tgl.setAttribute("aria-expanded",String(open));
+  if(open) document.getElementById("f-key").focus();
+};
+document.getElementById("go").onclick=run;
+document.getElementById("deep").onclick=deepScan;
+document.getElementById("forget").onclick=()=>{
+  LS.del(K_KEY);
+  document.getElementById("f-key").value="";
+  showErr("이 브라우저에 저장된 키를 지웠습니다.");
+};
+document.getElementById("f-key").addEventListener("keydown",e=>{
+  if(e.key==="Enter"){ e.preventDefault(); run(); }
+});
+
+document.getElementById("f-key").value=LS.get(K_KEY)||"";
 renderAll();
 </script>
 
