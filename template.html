@@ -353,7 +353,30 @@ const LS = {
   set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
   del(k){ try{ localStorage.removeItem(k); }catch(e){} }
 };
-const K_KEY="teampop.key", K_HITS="teampop.hits";
+const K_KEY="teampop.key", K_HITS="teampop.hits", K_CACHE="teampop.cache";
+const AUTO_STALE_MS = 20*60*1000;   /* on load, refetch only if the data is older than this */
+
+/* A viewer's own fetch is kept here so a reload does not fall back to the built-in
+   snapshot, and so the next visit starts from their latest data. Per-browser only. */
+function saveCache(){
+  try{
+    LS.set(K_CACHE, JSON.stringify({
+      at: Date.now(), fetchedAt: state.fetchedAt, telemetryAt: state.telemetryAt,
+      seasonId: state.seasonId, seasonStart: state.seasonStart, seasonSrc: state.seasonSrc,
+      players: state.players, matches: state.matches, weapons: state.weapons
+    }));
+  }catch(e){ /* quota or private mode - the page still works */ }
+}
+function loadCache(){
+  try{
+    const o=JSON.parse(LS.get(K_CACHE)||"null");
+    if(!o || !Array.isArray(o.matches) || !o.matches.length || !Array.isArray(o.players)) return null;
+    /* use it only when it is genuinely newer than the snapshot built into the page */
+    const seedTop=(SEED.matches[0]||{}).at||"", mineTop=(o.matches[0]||{}).at||"";
+    if(mineTop < seedTop) return null;
+    return o;
+  }catch(e){ return null; }
+}
 
 /* api.pubg.com exposes only Content-Length through CORS, so X-Ratelimit-* cannot be
    read here - this counts the limited calls itself over a 60s window.
@@ -458,13 +481,14 @@ function showErr(msg){
   e.textContent=msg; e.hidden=false;
 }
 
-async function run(){
+async function run(opts){
+  const auto = !!(opts && opts.auto);
   const btn=document.getElementById("go");
   document.getElementById("err").hidden=true;
-  if(!apiKey()){ showErr("API 키를 입력하세요."); return; }
+  if(!apiKey()){ if(!auto) showErr("API 키를 입력하세요."); return; }
   LS.set(K_KEY, apiKey());
   if(budgetLeft()<CALL_COST){
-    showErr("이번 1분 안에 남은 호출 여유가 부족합니다 ("+CALL_COST+"회 필요, "+budgetLeft()+"회 남음). 잠시 후 다시 시도하세요.");
+    if(!auto) showErr("이번 1분 안에 남은 호출 여유가 부족합니다 ("+CALL_COST+"회 필요, "+budgetLeft()+"회 남음). 잠시 후 다시 시도하세요.");
     return;
   }
   btn.disabled=true; btn.textContent="조회 중...";
@@ -506,17 +530,26 @@ async function run(){
       chunk.forEach(c=>{ if(c) out.push(c); });
     }
     out.sort((a,b)=>String(b.at||"").localeCompare(String(a.at||"")));
+    /* a match already analysed keeps its telemetry numbers - only new games lose them */
+    const prevT={};
+    state.matches.forEach(m=>Object.keys(m.members||{}).forEach(n=>{
+      if(m.members[n].t) prevT[m.id+"|"+n]=m.members[n].t;
+    }));
+    out.forEach(m=>Object.keys(m.members||{}).forEach(n=>{
+      const t=prevT[m.id+"|"+n]; if(t) m.members[n].t=t;
+    }));
     const sb=seasonStartOf(season, out, state.players);
     state.seasonStart=sb.at; state.seasonSrc=sb.src;
     state.matches = sb.at ? out.filter(m=>String(m.at||"")>=sb.at) : out;
     state.live=true;
-    state.telemetryAt=null;        /* the match set changed - telemetry numbers are stale */
-    state.weapons={};
+    const covered=state.matches.every(m=>Object.keys(m.members||{}).every(n=>m.members[n].t));
+    if(!covered){ state.telemetryAt=null; state.weapons={}; }
     state.fetchedAt=new Date().toLocaleString("ko-KR");
-    if(missing.length) showErr("찾지 못한 멤버: "+missing.join(", "));
+    if(missing.length && !auto) showErr("찾지 못한 멤버: "+missing.join(", "));
+    saveCache();
     renderAll();
   }catch(e){
-    showErr((e && e.message) || String(e));
+    if(!auto) showErr((e && e.message) || String(e));
   }finally{
     btn.disabled=false; btn.textContent="최신 전적 가져오기"; paintMeter();
   }
@@ -672,6 +705,7 @@ async function deepScan(){
     });
     state.weapons=weap;
     state.telemetryAt=new Date().toLocaleString("ko-KR");
+    saveCache();
     renderAll();
   }catch(e){
     showErr((e && e.message) || String(e));
@@ -1051,8 +1085,9 @@ function renderAll(){
 /* ---------- labels + wire ---------- */
 function renderSnapshot(){
   document.getElementById("snap-note").innerHTML = state.live
-    ? "<b>" + esc(state.fetchedAt) + "</b>에 이 브라우저가 직접 조회한 결과입니다. 이 화면에만 반영되며, 공유 주소의 내용은 바뀌지 않습니다 &mdash; 모두에게 반영하려면 저장소 Actions 의 <b>Run workflow</b> 를 쓰세요."
-    : "<b>" + esc(state.fetchedAt) + "</b> 기준입니다. 우측 상단 <b>갱신</b> 에서 API 키를 넣으면 최신 전적을 바로 불러올 수 있습니다. 매일 09:00 에 자동으로도 갱신됩니다.";
+    ? "<b>" + esc(state.fetchedAt) + "</b>에 이 브라우저가 직접 조회한 결과입니다. 키가 저장돼 있어 다음 방문에도 자동으로 최신을 불러옵니다." +
+      (state.telemetryAt ? "" : " 텔레메트리 항목은 <b>정밀 분석</b>을 눌러야 채워집니다.")
+    : "<b>" + esc(state.fetchedAt) + "</b> 기준 기본 스냅샷입니다. 우측 상단 <b>갱신</b> 에서 본인 API 키를 한 번 넣으면, 이후 이 브라우저에서는 열 때마다 자동으로 최신 전적이 표시됩니다.";
 }
 
 const refresh=document.getElementById("refresh"), tgl=document.getElementById("toggle-panel");
@@ -1074,7 +1109,23 @@ document.getElementById("f-key").addEventListener("keydown",e=>{
 });
 
 document.getElementById("f-key").value=LS.get(K_KEY)||"";
+
+/* start from this viewer's own last fetch when it beats the built-in snapshot */
+const cached=loadCache();
+if(cached){
+  state.players=cached.players; state.matches=cached.matches;
+  state.weapons=cached.weapons||{}; state.telemetryAt=cached.telemetryAt||null;
+  state.seasonId=cached.seasonId||state.seasonId;
+  state.seasonStart=cached.seasonStart||state.seasonStart;
+  state.seasonSrc=cached.seasonSrc||state.seasonSrc;
+  state.fetchedAt=cached.fetchedAt; state.live=true;
+}
 renderAll();
+
+/* with a key saved, keep it current by itself - paint first, then fetch if stale */
+if(LS.get(K_KEY) && (!cached || Date.now()-cached.at > AUTO_STALE_MS)){
+  setTimeout(()=>{ if(budgetLeft()>=CALL_COST) run({auto:true}); }, 400);
+}
 </script>
 
 </body>
