@@ -15,7 +15,17 @@ python build.py       # docs/index.html 생성
 
 `.env` 는 `.gitignore` 에 있어 커밋되지 않습니다.
 
-## 수동 갱신
+## 원할 때 갱신하는 방법
+
+**① 폰에서 — PC 불필요**
+
+저장소 **Actions** 탭 → `전적 갱신` → **Run workflow** 버튼. GitHub 서버가 빌드하므로 PC 가 꺼져 있어도 됩니다.
+
+처음 한 번만 저장소 **Settings → Secrets and variables → Actions → New repository secret** 에 `PUBG_API_KEY` 를 등록하세요. 이 값은 암호화되어 저장되고 저장소 코드나 로그에 노출되지 않습니다.
+
+**② PC 에서**
+
+바탕화면의 `TEAMPOP 전적 갱신` 바로가기를 더블클릭하거나:
 
 ```powershell
 .\update.bat
@@ -23,7 +33,17 @@ python build.py       # docs/index.html 생성
 
 빌드 → 변경 있으면 커밋 → 푸시까지 합니다. 변경이 없으면 푸시하지 않습니다.
 
-## 자동 갱신 (작업 스케줄러)
+## 자동 갱신
+
+GitHub Actions 가 매일 **09:00 KST** 에 자동 실행됩니다 (`.github/workflows/update.yml` 의 cron). PC 와 무관하게 돌아갑니다.
+
+아래 윈도우 작업 스케줄러는 Actions 를 쓰면 불필요합니다 — 지우려면:
+
+```powershell
+Unregister-ScheduledTask -TaskName "TEAMPOP PUBG 전적 갱신" -Confirm:$false
+```
+
+### (선택) 윈도우 작업 스케줄러
 
 매일 오전 9시에 돌리는 예시:
 
