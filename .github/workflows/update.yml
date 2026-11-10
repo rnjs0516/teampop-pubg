@@ -2,8 +2,13 @@ name: 전적 갱신
 
 on:
   workflow_dispatch:        # Actions 탭의 "Run workflow" 버튼 - 폰에서도 누를 수 있습니다
+    inputs:
+      force:
+        description: "새 경기가 없어도 다시 빌드"
+        type: boolean
+        default: false
   schedule:
-    - cron: "0 0 * * *"     # 매일 00:00 UTC = 09:00 KST
+    - cron: "5 * * * *"     # 매시 정각 5분. 새 경기가 없으면 호출 1회만 쓰고 바로 끝납니다.
 
 permissions:
   contents: write
@@ -26,7 +31,7 @@ jobs:
       - name: 전적 수집 및 페이지 생성
         env:
           PUBG_API_KEY: ${{ secrets.PUBG_API_KEY }}
-        run: python build.py
+        run: python build.py ${{ inputs.force && '--force' || '' }}
 
       - name: 변경분 커밋 및 푸시
         run: |

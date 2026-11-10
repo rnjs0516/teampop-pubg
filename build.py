@@ -4,7 +4,7 @@ API still returns (its player->matches relationship reaches back about 14 days).
 Rate-limited calls: /players (1) + /seasons (1) + /ranked per member (4) = 6.
 /matches and the telemetry CDN are exempt and are fetched concurrently.
 """
-import json, os, urllib.request, urllib.error, urllib.parse, pathlib, sys, gzip, time, collections
+import json, os, hashlib, urllib.request, urllib.error, urllib.parse, pathlib, sys, gzip, time, collections
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
@@ -132,6 +132,17 @@ for p in pl["data"]:
 NAME = {f["accountId"]: f["name"] for f in found}
 ACCT = {f["name"]: f["accountId"] for f in found}
 print("members %s | union %d matches" % ([f["name"] for f in found], len(union)), file=sys.stderr)
+
+# 새 경기가 없으면 여기서 끝낸다 - 제한 대상 호출 1회만 쓰고 종료하므로 자주 돌려도 싸다
+union_sig = hashlib.sha1(",".join(sorted(union)).encode("utf-8")).hexdigest()
+if "--force" not in sys.argv and OUT_JSON.exists():
+    try:
+        prev = json.loads(OUT_JSON.read_text(encoding="utf-8")).get("unionSig")
+    except Exception:
+        prev = None
+    if prev == union_sig:
+        print("새 경기 없음 - 빌드 생략 (호출 1회 사용)", file=sys.stderr)
+        sys.exit(0)
 
 cur_season = next(s["id"] for s in json.loads(fetch(BASE + "/seasons", H))["data"]
                   if s["attributes"].get("isCurrentSeason"))
@@ -328,6 +339,7 @@ if season_start:
 seed = {"fetchedAt": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "shard": SHARD, "mode": MODE, "matchType": MATCH_TYPE,
         "seasonId": cur_season, "seasonStart": season_start, "squad": SQUAD, "telemetry": True,
+        "unionSig": union_sig,
         "players": [{"name": f["name"], "accountId": f["accountId"],
                      "ranked": norm_ranked(ranked.get(f["accountId"], {}))} for f in found],
         "weapons": {nm: [[weap_label(k), v] for k, v in c.most_common(8)]

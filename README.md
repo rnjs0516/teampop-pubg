@@ -35,7 +35,13 @@ python build.py       # docs/index.html 생성
 
 ## 자동 갱신
 
-GitHub Actions 가 매일 **09:00 KST** 에 자동 실행됩니다 (`.github/workflows/update.yml` 의 cron). PC 와 무관하게 돌아갑니다.
+GitHub Actions 가 **매시간** 자동 실행됩니다 (`.github/workflows/update.yml`, 매 정각 5분). GitHub 서버에서 도므로 PC 와 무관합니다.
+
+새 경기가 없으면 `/players` **1회만** 호출하고 즉시 끝납니다 — 멤버들의 경기 ID 목록 해시(`unionSig`)를 이전 결과와 비교해 변화가 없으면 빌드·커밋·푸시를 모두 건너뜁니다. 그래서 매시간 돌려도 비용이 거의 없습니다.
+
+새 경기가 있을 때만 전체 분석(텔레메트리 포함, 약 40초)을 돌리고 푸시합니다. 즉 **게임을 하면 1시간 안에 알아서 반영**됩니다.
+
+수동 실행 시 `force` 를 켜면 새 경기가 없어도 강제로 다시 빌드합니다.
 
 아래 윈도우 작업 스케줄러는 Actions 를 쓰면 불필요합니다 — 지우려면:
 
