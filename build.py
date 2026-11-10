@@ -4,7 +4,7 @@ API still returns (its player->matches relationship reaches back about 14 days).
 Rate-limited calls: /players (1) + /seasons (1) + /ranked per member (4) = 6.
 /matches and the telemetry CDN are exempt and are fetched concurrently.
 """
-import json, urllib.request, urllib.error, urllib.parse, pathlib, sys, gzip, time, collections
+import json, os, urllib.request, urllib.error, urllib.parse, pathlib, sys, gzip, time, collections
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
@@ -14,14 +14,14 @@ TEMPLATE = ROOT / "template.html"
 OUT_HTML = ROOT / "docs" / "index.html"
 OUT_JSON = ROOT / "docs" / "data.json"      # the same seed, for anything else that wants it
 
-if not ENV.exists():
-    sys.exit("`.env` 가 없습니다. `.env.example` 을 복사해 PUBG_API_KEY 를 넣으세요: %s" % ENV)
-KEY = ""
-for line in ENV.read_text(encoding="utf-8", errors="replace").splitlines():
-    if line.strip().startswith("PUBG_API_KEY="):
-        KEY = line.split("=", 1)[1].strip()
+# 환경변수가 우선 (GitHub Actions 는 secrets 로 주입), 없으면 로컬 .env
+KEY = os.environ.get("PUBG_API_KEY", "").strip()
+if not KEY and ENV.exists():
+    for line in ENV.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.strip().startswith("PUBG_API_KEY="):
+            KEY = line.split("=", 1)[1].strip()
 if not KEY or KEY.startswith("PUT_"):
-    sys.exit("`.env` 의 PUBG_API_KEY 가 비어 있습니다: %s" % ENV)
+    sys.exit("PUBG_API_KEY 를 찾지 못했습니다. 환경변수로 넣거나 `.env` 에 적으세요 (%s)" % ENV)
 
 SHARD, MODE, MATCH_TYPE = "kakao", "squad", "competitive"
 SQUAD = ["gunerz_", "DDalGi_GOD", "nM_-ShinyaT", "Moontari_"]
@@ -87,6 +87,9 @@ def fetch(url, headers, tries=5):
                 raw = r.read()
                 return gzip.decompress(raw) if r.headers.get("Content-Encoding") == "gzip" else raw
         except urllib.error.HTTPError as e:
+            if e.code == 401:
+                sys.exit("PUBG API 키 인증 실패(401). 키가 만료됐거나 잘못됐습니다. "
+                         "GitHub Actions 라면 저장소 Secrets 의 PUBG_API_KEY 를 확인하세요.")
             if e.code == 429 and n < tries - 1:
                 reset = e.headers.get("X-Ratelimit-Reset")
                 w = max(3, min(70, int(reset) - int(time.time()) + 2)) if reset and reset.isdigit() else 12
