@@ -5,7 +5,9 @@ Rate-limited calls: /players (1) + /seasons (1) + /ranked per member (4) = 6.
 /matches and the telemetry CDN are exempt and are fetched concurrently.
 """
 import json, os, hashlib, urllib.request, urllib.error, urllib.parse, pathlib, sys, gzip, time, collections
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
+
+KST = timezone(timedelta(hours=9))   # GitHub Actions runs in UTC; the page must read KST
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = pathlib.Path(__file__).resolve().parent
@@ -336,7 +338,7 @@ if season_start:
     print("season start %s (from %s) - dropped %d older matches"
           % (season_start, cands[0][2], dropped), file=sys.stderr)
 
-seed = {"fetchedAt": datetime.now().strftime("%Y-%m-%d %H:%M"),
+seed = {"fetchedAt": datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
         "shard": SHARD, "mode": MODE, "matchType": MATCH_TYPE,
         "seasonId": cur_season, "seasonStart": season_start, "squad": SQUAD, "telemetry": True,
         "unionSig": union_sig,

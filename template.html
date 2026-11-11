@@ -357,6 +357,11 @@ const LS = {
   del(k){ try{ localStorage.removeItem(k); }catch(e){} }
 };
 const K_KEY="teampop.key", K_HITS="teampop.hits", K_CACHE="teampop.cache";
+/* every timestamp on the page is KST, wherever the viewer or the builder sits */
+function kst(d){
+  const z=new Date(d.getTime()+9*3600*1000), p=n=>String(n).padStart(2,"0");
+  return z.getUTCFullYear()+"-"+p(z.getUTCMonth()+1)+"-"+p(z.getUTCDate())+" "+p(z.getUTCHours())+":"+p(z.getUTCMinutes());
+}
 const AUTO_STALE_MS = 20*60*1000;   /* on load, refetch only if the data is older than this */
 
 /* A viewer's own fetch is kept here so a reload does not fall back to the built-in
@@ -547,7 +552,7 @@ async function run(opts){
     state.live=true;
     const covered=state.matches.every(m=>Object.keys(m.members||{}).every(n=>m.members[n].t));
     if(!covered){ state.telemetryAt=null; state.weapons={}; }
-    state.fetchedAt=new Date().toLocaleString("ko-KR");
+    state.fetchedAt=kst(new Date());
     if(missing.length && !auto) showErr("찾지 못한 멤버: "+missing.join(", "));
     saveCache();
     renderAll();
@@ -707,7 +712,7 @@ async function deepScan(){
         .sort((a,b)=>b[1]-a[1]).slice(0,8);
     });
     state.weapons=weap;
-    state.telemetryAt=new Date().toLocaleString("ko-KR");
+    state.telemetryAt=kst(new Date());
     saveCache();
     renderAll();
   }catch(e){
@@ -1080,7 +1085,7 @@ function renderRoster(){
 function renderAll(){
   document.getElementById("cost").textContent=String(CALL_COST);
   document.getElementById("src-note").textContent =
-    (state.live ? "브라우저에서 직접 조회 " : "") + state.fetchedAt + " 기준";
+    (state.live ? "브라우저에서 직접 조회 " : "") + state.fetchedAt + " KST 기준";
   renderRoster(); renderTable(); renderBars(); renderAwards();
   renderSquadTiles(); renderTrend(); renderMatches(); renderSnapshot(); paintMeter();
 }
@@ -1088,9 +1093,9 @@ function renderAll(){
 /* ---------- labels + wire ---------- */
 function renderSnapshot(){
   document.getElementById("snap-note").innerHTML = state.live
-    ? "<b>" + esc(state.fetchedAt) + "</b>에 이 브라우저가 직접 조회한 결과입니다. 키가 저장돼 있어 다음 방문에도 자동으로 최신을 불러옵니다." +
+    ? "<b>" + esc(state.fetchedAt) + " KST</b>에 이 브라우저가 직접 조회한 결과입니다. 키가 저장돼 있어 다음 방문에도 자동으로 최신을 불러옵니다." +
       (state.telemetryAt ? "" : " 텔레메트리 항목은 <b>정밀 분석</b>을 눌러야 채워집니다.")
-    : "<b>" + esc(state.fetchedAt) + "</b> 기준 기본 스냅샷입니다. 우측 상단 <b>갱신</b> 에서 본인 API 키를 한 번 넣으면, 이후 이 브라우저에서는 열 때마다 자동으로 최신 전적이 표시됩니다.";
+    : "<b>" + esc(state.fetchedAt) + " KST</b> 기준 기본 스냅샷입니다. 우측 상단 <b>갱신</b> 에서 본인 API 키를 한 번 넣으면, 이후 이 브라우저에서는 열 때마다 자동으로 최신 전적이 표시됩니다.";
 }
 
 const refresh=document.getElementById("refresh"), tgl=document.getElementById("toggle-panel");
