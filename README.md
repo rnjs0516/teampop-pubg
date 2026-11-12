@@ -67,6 +67,52 @@ schtasks /delete /tn "TEAMPOP PUBG 전적 갱신" /f
 
 PC 가 켜져 있어야 실행됩니다.
 
+## 하이라이트 클립
+
+`highlights.json` 에 적은 클립이 페이지의 **하이라이트** 섹션에 뜹니다. 비어 있으면 섹션이 숨습니다.
+
+손으로 고치지 않고 `clip.py` 를 쓰면 됩니다.
+
+```powershell
+python clip.py "https://youtu.be/XXXXXXXXXXX" -p gunerz_ -t "1v4 클러치" -n "에란겔 막자기리"
+python clip.py --list          # 등록된 클립 보기
+python clip.py --remove 2      # 2번 삭제
+.\update.bat                   # 페이지 반영 + 푸시
+```
+
+파일 형식은 이렇습니다.
+
+```json
+{
+  "clips": [
+    { "player": "gunerz_", "title": "1v4 클러치", "url": "https://youtu.be/XXXXXXXXXXX",
+      "date": "2026-11-09", "note": "에란겔 막자기리" }
+  ]
+}
+```
+
+`player` / `date` / `note` 는 없어도 됩니다. 최신 날짜가 위로 옵니다.
+
+### url 에 쓸 수 있는 것
+
+**① 유튜브 (권장)** - `youtu.be/...`, `watch?v=...`, `shorts/...`, `embed/...` 전부 됩니다.
+
+저장소 용량을 전혀 쓰지 않고 길이/화질 제한도 없습니다. **일부공개(unlisted)** 로 올리면 링크를 아는 사람만 봅니다. 단 **비공개(private)** 는 임베드가 막혀서 재생되지 않으니 일부공개를 쓰세요.
+
+페이지는 썸네일만 먼저 받고 **누를 때** 플레이어를 끼웁니다. 클립이 많아도 폰에서 느려지지 않습니다.
+
+**② 직접 호스팅** - mp4 / webm 파일을 `docs/clips/` 에 넣고 `"url": "clips/파일명.mp4"` 로 적습니다.
+
+유튜브가 필요 없는 대신 파일이 저장소에 커밋되어 **git 히스토리에 영구히 남습니다** (지워도 용량이 줄지 않습니다). GitHub Pages 사이트 전체 한계가 **1GB** 이므로 짧고 작은 클립만 쓰고, 큰 건 유튜브로 올리세요.
+
+그 밖의 url 은 빌드할 때 경고와 함께 빠집니다 - 오타나 `javascript:` 같은 게 페이지에 들어가지 않습니다.
+
+### 주의
+
+저장소가 **Public** 이라 `highlights.json` 에 적은 링크와 `docs/clips/` 의 파일은 외부에 공개됩니다.
+
+`highlights.json` 은 `update.bat` 이 함께 커밋합니다. 직접 `git add docs` 만 하면 매시간 Actions 빌드가 빈 목록으로 페이지를 다시 만들어 클립이 사라지니 주의하세요.
+
 ## 멤버 변경
 
 `build.py` 상단의 `SQUAD` 를 고치고 다시 빌드하면 됩니다.

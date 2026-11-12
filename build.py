@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 ROOT = pathlib.Path(__file__).resolve().parent
 ENV = ROOT / ".env"
+HL = ROOT / "highlights.json"
 TEMPLATE = ROOT / "template.html"
 OUT_HTML = ROOT / "docs" / "index.html"
 OUT_JSON = ROOT / "docs" / "data.json"      # the same seed, for anything else that wants it
@@ -24,6 +25,92 @@ if not KEY and ENV.exists():
             KEY = line.split("=", 1)[1].strip()
 if not KEY or KEY.startswith("PUT_"):
     sys.exit("PUBG_API_KEY 를 찾지 못했습니다. 환경변수로 넣거나 `.env` 에 적으세요 (%s)" % ENV)
+
+
+# ---------- highlight clips ----------
+# Authored by hand in highlights.json. Two sources work in a browser: a YouTube
+# link (iframe) and a plain mp4/webm the page can serve itself. Anything else is
+# dropped with a warning rather than written into the page, so a typo cannot put
+# an arbitrary URL - or a javascript: scheme - into everyone's dashboard.
+YT_HOSTS = {"youtu.be", "www.youtu.be", "youtube.com", "www.youtube.com",
+            "m.youtube.com", "music.youtube.com", "youtube-nocookie.com",
+            "www.youtube-nocookie.com"}
+
+
+def yt_id(u):
+    """Return the 11-char video id, or None when this is not a YouTube link."""
+    try:
+        q = urllib.parse.urlparse(u)
+    except Exception:
+        return None
+    if q.scheme not in ("http", "https") or q.hostname not in YT_HOSTS:
+        return None
+    cand = None
+    if q.hostname in ("youtu.be", "www.youtu.be"):
+        cand = q.path.lstrip("/").split("/")[0]
+    else:
+        parts = [s for s in q.path.split("/") if s]
+        if parts and parts[0] in ("shorts", "embed", "live", "v"):
+            cand = parts[1] if len(parts) > 1 else None
+        else:
+            cand = (urllib.parse.parse_qs(q.query).get("v") or [None])[0]
+    if cand and len(cand) == 11 and all(c.isalnum() or c in "_-" for c in cand):
+        return cand
+    return None
+
+
+def load_highlights():
+    if not HL.exists():
+        return []
+    try:
+        raw = json.loads(HL.read_text(encoding="utf-8"))
+    except Exception as e:
+        print("highlights.json 을 읽지 못했습니다 (%s) - 하이라이트 없이 빌드합니다" % e, file=sys.stderr)
+        return []
+    rows = raw.get("clips") if isinstance(raw, dict) else raw
+    if not isinstance(rows, list):
+        print("highlights.json 형식이 올바르지 않습니다 - clips 배열이 필요합니다", file=sys.stderr)
+        return []
+
+    out, skipped = [], 0
+    for i, c in enumerate(rows):
+        if not isinstance(c, dict):
+            skipped += 1
+            continue
+        url = str(c.get("url") or "").strip()
+        if not url:
+            skipped += 1
+            continue
+        item = {"player": str(c.get("player") or "").strip(),
+                "title": str(c.get("title") or "").strip() or "하이라이트",
+                "date": str(c.get("date") or "").strip(),
+                "note": str(c.get("note") or "").strip()}
+        vid = yt_id(url)
+        if vid:
+            item.update(kind="yt", id=vid)
+        elif url.startswith("clips/") and ".." not in url:
+            if not (OUT_HTML.parent / url).exists():
+                print("  클립 파일이 없습니다: docs/%s - 건너뜁니다" % url, file=sys.stderr)
+                skipped += 1
+                continue
+            if not url.lower().endswith((".mp4", ".webm")):
+                print("  브라우저가 재생 못 하는 확장자입니다: %s (mp4/webm 만) - 건너뜁니다" % url, file=sys.stderr)
+                skipped += 1
+                continue
+            item.update(kind="file", url=url)
+        elif url.lower().split("?")[0].endswith((".mp4", ".webm")) and url.startswith("https://"):
+            item.update(kind="file", url=url)
+        else:
+            print("  지원하지 않는 url 입니다: %s" % url[:80], file=sys.stderr)
+            print("    유튜브 링크, 또는 mp4/webm 파일만 됩니다.", file=sys.stderr)
+            skipped += 1
+            continue
+        out.append(item)
+
+    out.sort(key=lambda c: c.get("date") or "", reverse=True)
+    print("하이라이트 %d개%s" % (len(out), " (%d개 건너뜀)" % skipped if skipped else ""), file=sys.stderr)
+    return out
+
 
 SHARD, MODE, MATCH_TYPE = "kakao", "squad", "competitive"
 SQUAD = ["gunerz_", "DDalGi_GOD", "nM_-ShinyaT", "Moontari_"]
@@ -136,14 +223,18 @@ ACCT = {f["name"]: f["accountId"] for f in found}
 print("members %s | union %d matches" % ([f["name"] for f in found], len(union)), file=sys.stderr)
 
 # 새 경기가 없으면 여기서 끝낸다 - 제한 대상 호출 1회만 쓰고 종료하므로 자주 돌려도 싸다
-union_sig = hashlib.sha1(",".join(sorted(union)).encode("utf-8")).hexdigest()
+hl_clips = load_highlights()
+hl_sig = hashlib.sha1(json.dumps(hl_clips, sort_keys=True, ensure_ascii=False)
+                      .encode("utf-8")).hexdigest()[:12]
+union_sig = hashlib.sha1((",".join(sorted(union)) + "|hl:" + hl_sig)
+                         .encode("utf-8")).hexdigest()
 if "--force" not in sys.argv and OUT_JSON.exists():
     try:
         prev = json.loads(OUT_JSON.read_text(encoding="utf-8")).get("unionSig")
     except Exception:
         prev = None
     if prev == union_sig:
-        print("새 경기 없음 - 빌드 생략 (호출 1회 사용)", file=sys.stderr)
+        print("새 경기도 없고 하이라이트도 그대로 - 빌드 생략 (호출 1회 사용)", file=sys.stderr)
         sys.exit(0)
 
 cur_season = next(s["id"] for s in json.loads(fetch(BASE + "/seasons", H))["data"]
@@ -341,7 +432,7 @@ if season_start:
 seed = {"fetchedAt": datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
         "shard": SHARD, "mode": MODE, "matchType": MATCH_TYPE,
         "seasonId": cur_season, "seasonStart": season_start, "squad": SQUAD, "telemetry": True,
-        "unionSig": union_sig,
+        "unionSig": union_sig, "highlights": hl_clips,
         "players": [{"name": f["name"], "accountId": f["accountId"],
                      "ranked": norm_ranked(ranked.get(f["accountId"], {}))} for f in found],
         "weapons": {nm: [[weap_label(k), v] for k, v in c.most_common(8)]

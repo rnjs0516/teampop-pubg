@@ -91,6 +91,21 @@ input:focus{border-color:var(--gold);outline:none}
 .award.none .aw-t{color:var(--ink-3)}
 .award.none .aw-n{color:var(--ink-3);font-weight:400}
 
+/* Highlights. A YouTube clip shows its thumbnail and swaps in the iframe only on
+   click, so opening the page on a phone costs one small image per clip, not an
+   embedded player each. A self-hosted file uses preload=none for the same reason. */
+.hls{display:grid;grid-template-columns:1fr;gap:12px}
+.hl{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.hl video,.hl iframe,.hl .hl-play{display:block;width:100%;aspect-ratio:16/9;border:0;background:#000}
+.hl .hl-play{padding:0;border:0;border-radius:0;position:relative;cursor:pointer}
+.hl .hl-play img{width:100%;height:100%;object-fit:cover;display:block}
+.hl-tri{position:absolute;inset:0;margin:auto;width:52px;height:52px;border-radius:50%;background:rgba(10,15,22,.72);border:1px solid var(--line-2);transition:background .15s,border-color .15s}
+.hl-tri::after{content:"";position:absolute;inset:0;margin:auto;width:0;height:0;border-left:15px solid var(--gold);border-top:9.5px solid transparent;border-bottom:9.5px solid transparent;transform:translateX(3px)}
+.hl-play:hover .hl-tri,.hl-play:focus-visible .hl-tri{background:rgba(10,15,22,.92);border-color:var(--gold)}
+.hl figcaption{padding:11px 13px}
+.hl-t{font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hl-s{font-size:11.5px;color:var(--ink-3);font-family:var(--f-num);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hl-s b{color:var(--mark-self);font-family:var(--f-body);font-weight:700}
 .tbl-wrap{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow-x:auto}
 table{width:100%;border-collapse:collapse;white-space:nowrap}
 th,td{padding:12px 13px;text-align:right;border-bottom:1px solid var(--line)}
@@ -150,6 +165,7 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
   .tiles{grid-template-columns:repeat(4,1fr)}
   .awards{grid-template-columns:1fr 1fr}
   .matches{grid-template-columns:1fr 1fr}
+  .hls{grid-template-columns:1fr 1fr}
   .brand h1{font-size:19px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -211,6 +227,12 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
   </div>
   <div class="awards" id="awards"></div>
   <p class="note" id="award-note" style="margin-top:9px"></p>
+
+  <div class="sec" id="hl-sec" hidden>
+    <div><span class="eyebrow">Clips</span><h2>하이라이트</h2></div>
+    <span class="meta" id="hl-meta"></span>
+  </div>
+  <div class="hls" id="hls" hidden></div>
 
   <div class="sec">
     <div><span class="eyebrow">Squad &middot; season</span><h2>스쿼드 시즌 전적</h2></div>
@@ -344,6 +366,7 @@ const state = {
   fetchedAt: SEED.fetchedAt, live: false,
   players: SEED.players, matches: SEED.matches,
   weapons: SEED.weapons || {}, telemetryAt: SEED.telemetry ? SEED.fetchedAt : null,
+  highlights: SEED.highlights || [],
   metric: "kd", sort: {k:"rp", dir:-1}
 };
 
@@ -1082,11 +1105,48 @@ function renderRoster(){
   document.getElementById("roster").innerHTML=SQUAD.map(n=>
     '<span class="rchip"><b>'+esc(n)+"</b></span>").join("");
 }
+/* Clips come from the page build, never from the API, so this renders once and
+   then no-ops - an auto-refresh must not tear out a video someone is watching. */
+let hlSig=null;
+function renderHighlights(){
+  const list=Array.isArray(state.highlights)?state.highlights:[];
+  const sig=JSON.stringify(list);
+  if(sig===hlSig) return;
+  hlSig=sig;
+  const sec=document.getElementById("hl-sec"), wrap=document.getElementById("hls");
+  sec.hidden=wrap.hidden=!list.length;
+  if(!list.length){ wrap.innerHTML=""; return; }
+  document.getElementById("hl-meta").textContent=list.length+"개";
+  wrap.innerHTML=list.map(h=>{
+    const ttl=esc(h.title||"하이라이트"), who=esc(h.player||"");
+    const sub=[h.date,h.note].filter(Boolean).map(esc).join(" · ");
+    const media = h.kind==="yt"
+      ? '<button class="hl-play" data-yt="'+esc(h.id)+'" aria-label="'+ttl+' 재생">'
+        + '<img loading="lazy" decoding="async" alt="" src="https://i.ytimg.com/vi/'+esc(h.id)+'/hqdefault.jpg">'
+        + '<span class="hl-tri"></span></button>'
+      : '<video controls playsinline preload="none" src="'+esc(h.url)+'"></video>';
+    return '<figure class="hl">'+media+'<figcaption><div class="hl-t">'+ttl+'</div>'
+      + '<div class="hl-s">'+(who?'<b>'+who+'</b>':'')+(who&&sub?' · ':'')+sub+'</div></figcaption></figure>';
+  }).join("");
+}
+
+/* The container outlives each re-render, so one listener is enough. */
+document.getElementById("hls").addEventListener("click", e=>{
+  const b=e.target.closest(".hl-play"); if(!b) return;
+  const id=b.getAttribute("data-yt");
+  if(!/^[A-Za-z0-9_-]{11}$/.test(id||"")) return;
+  const f=document.createElement("iframe");
+  f.src="https://www.youtube-nocookie.com/embed/"+id+"?autoplay=1&rel=0";
+  f.title="하이라이트"; f.loading="lazy"; f.allowFullscreen=true;
+  f.allow="autoplay; encrypted-media; picture-in-picture; fullscreen";
+  b.replaceWith(f);
+});
+
 function renderAll(){
   document.getElementById("cost").textContent=String(CALL_COST);
   document.getElementById("src-note").textContent =
     (state.live ? "브라우저에서 직접 조회 " : "") + state.fetchedAt + " KST 기준";
-  renderRoster(); renderTable(); renderBars(); renderAwards();
+  renderRoster(); renderTable(); renderBars(); renderAwards(); renderHighlights();
   renderSquadTiles(); renderTrend(); renderMatches(); renderSnapshot(); paintMeter();
 }
 
