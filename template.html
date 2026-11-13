@@ -392,6 +392,7 @@ const AUTO_STALE_MS = 20*60*1000;   /* on load, refetch only if the data is olde
 function saveCache(){
   try{
     LS.set(K_CACHE, JSON.stringify({
+      v: 2, complete: true,
       at: Date.now(), fetchedAt: state.fetchedAt, telemetryAt: state.telemetryAt,
       seasonId: state.seasonId, seasonStart: state.seasonStart, seasonSrc: state.seasonSrc,
       players: state.players, matches: state.matches, weapons: state.weapons
@@ -402,6 +403,10 @@ function loadCache(){
   try{
     const o=JSON.parse(LS.get(K_CACHE)||"null");
     if(!o || !Array.isArray(o.matches) || !o.matches.length || !Array.isArray(o.players)) return null;
+    /* v1 caches were written before a partial fetch was detectable, so one of them
+       may hold a handful of matches and would otherwise outrank the seed forever.
+       Dropping them here repairs a stuck browser with no action from the viewer. */
+    if(o.v!==2 || o.complete!==true) return null;
     /* use it only when it is genuinely newer than the snapshot built into the page */
     const seedTop=(SEED.matches[0]||{}).at||"", mineTop=(o.matches[0]||{}).at||"";
     if(mineTop < seedTop) return null;
@@ -538,6 +543,7 @@ async function run(opts){
     state.seasonId=season;
 
     const players=[];
+    const rankedMissing=[];
     for(let i=0;i<found.length;i++){
       const f=found[i];
       btn.textContent="경쟁전 "+(i+1)+"/"+found.length;
@@ -545,7 +551,7 @@ async function run(opts){
       try{
         const d=await api("players/"+f.accountId+"/seasons/"+season+"/ranked");
         rk=((d.data.attributes||{}).rankedGameModeStats||{})[state.mode]||{};
-      }catch(e){ rk={}; }
+      }catch(e){ rk={}; rankedMissing.push(f.name); }
       players.push({name:f.name, accountId:f.accountId, ranked:normRanked(rk)});
     }
     state.players=players;
@@ -554,12 +560,25 @@ async function run(opts){
     const union=[];
     found.forEach(f=>f.matchIds.forEach(id=>{ if(union.indexOf(id)<0) union.push(id); }));
     const out=[];
+    let failed=[];
+    const grab = ids => Promise.all(ids.map(id=>
+      api("matches/"+id,{counts:false}).then(m=>trimMatch(m,acctToName))
+        .catch(()=>{ failed.push(id); return null; })));
     for(let i=0;i<union.length;i+=5){
       btn.textContent="경기 "+Math.min(i+5,union.length)+"/"+union.length;
-      const chunk=await Promise.all(union.slice(i,i+5).map(id=>
-        api("matches/"+id,{counts:false}).then(m=>trimMatch(m,acctToName)).catch(()=>null)));
-      chunk.forEach(c=>{ if(c) out.push(c); });
+      (await grab(union.slice(i,i+5))).forEach(c=>{ if(c) out.push(c); });
     }
+    /* A dropped request used to vanish silently, leaving a short list that was then
+       cached and shown as a whole season. Retry once, then refuse the refresh -
+       a partial season on screen is worse than no refresh. */
+    if(failed.length){
+      btn.textContent="재시도 "+failed.length+"건";
+      const again=failed; failed=[];
+      (await grab(again)).forEach(c=>{ if(c) out.push(c); });
+    }
+    if(failed.length) throw new Error(
+      "경기 "+failed.length+"건을 받지 못해 갱신을 취소했습니다 - 일부만 반영하면 전적이 틀어집니다. "+
+      "화면은 그대로 두었습니다. 잠시 후 다시 시도하세요.");
     out.sort((a,b)=>String(b.at||"").localeCompare(String(a.at||"")));
     /* a match already analysed keeps its telemetry numbers - only new games lose them */
     const prevT={};
@@ -576,8 +595,14 @@ async function run(opts){
     const covered=state.matches.every(m=>Object.keys(m.members||{}).every(n=>m.members[n].t));
     if(!covered){ state.telemetryAt=null; state.weapons={}; }
     state.fetchedAt=kst(new Date());
-    if(missing.length && !auto) showErr("찾지 못한 멤버: "+missing.join(", "));
-    saveCache();
+    const notes=[];
+    if(missing.length) notes.push("찾지 못한 멤버: "+missing.join(", "));
+    if(rankedMissing.length) notes.push(
+      "경쟁전 전적을 받지 못한 멤버: "+rankedMissing.join(", ")+" (표의 숫자가 0으로 보입니다)");
+    if(notes.length && !auto) showErr(notes.join(" / "));
+    /* Cache only a result with nothing missing - a half-filled one would come back
+       on every later visit and look authoritative. */
+    if(!rankedMissing.length) saveCache();
     renderAll();
   }catch(e){
     if(!auto) showErr((e && e.message) || String(e));
