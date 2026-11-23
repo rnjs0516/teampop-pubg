@@ -84,7 +84,9 @@ def load_highlights():
         item = {"player": str(c.get("player") or "").strip(),
                 "title": str(c.get("title") or "").strip() or "하이라이트",
                 "date": str(c.get("date") or "").strip(),
-                "note": str(c.get("note") or "").strip()}
+                "note": str(c.get("note") or "").strip(),
+                # match id the clip was recorded from (clip.py fills it); optional
+                "match": str(c.get("match") or "").strip()}
         vid = yt_id(url)
         if vid:
             item.update(kind="yt", id=vid)

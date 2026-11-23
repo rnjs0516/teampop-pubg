@@ -94,7 +94,17 @@ input:focus{border-color:var(--gold);outline:none}
 /* Highlights. A YouTube clip shows its thumbnail and swaps in the iframe only on
    click, so opening the page on a phone costs one small image per clip, not an
    embedded player each. A self-hosted file uses preload=none for the same reason. */
-.hls{display:grid;grid-template-columns:1fr;gap:12px}
+.hls-grid{display:grid;grid-template-columns:1fr;gap:12px}
+.hl-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.hl-chips button{font-size:12.5px;padding:6px 11px;border-radius:999px;font-weight:600}
+.hl-chips button[aria-pressed="true"]{border-color:var(--gold);color:var(--gold)}
+.hl-chips button small{color:var(--ink-3);font-weight:400;margin-left:4px}
+.hl-day+.hl-day{margin-top:18px}
+.hl-day h3{font-size:13px;font-weight:700;color:var(--ink-2);margin:0 0 8px;font-family:var(--f-num)}
+.hl-day h3 span{color:var(--ink-3);font-weight:400;margin-left:6px}
+.hl.flash{outline:2px solid var(--gold);outline-offset:2px}
+.m-clips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.m-clip{font-size:12px;padding:5px 11px;border-radius:999px;border-color:rgba(233,180,76,.55);color:var(--gold);background:transparent;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hl{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .hl video,.hl iframe,.hl .hl-play{display:block;width:100%;aspect-ratio:16/9;border:0;background:#000}
 .hl .hl-play{padding:0;border:0;border-radius:0;position:relative;cursor:pointer}
@@ -174,7 +184,7 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
   .tiles{grid-template-columns:repeat(4,1fr)}
   .awards{grid-template-columns:1fr 1fr}
   .matches{grid-template-columns:1fr 1fr}
-  .hls{grid-template-columns:1fr 1fr}
+  .hls-grid{grid-template-columns:1fr 1fr}
   .brand h1{font-size:19px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
@@ -1241,10 +1251,17 @@ function renderMatches(){
       '</span><span class="m-date">'+esc(date)+'</span><span class="m-line'+
       (names.length===full?" full":"")+'">'+names.length+"인"+
       (names.length===full?" 전원":"")+'</span></div><div class="mems">'+mems+rnds+"</div>"+
+      clipBtns(m)+
       ((m.foes||[]).length
         ? '<div class="foes"><span class="foes-h">잡은 상대</span>'+m.foes.map(foeLine).join("")+"</div>"
         : "")+"</div></div>";
   }).join("");
+}
+function clipBtns(m){
+  const c=(state.highlights||[]).map((h,i)=>({h:h,i:i})).filter(x=>x.h.match===m.id);
+  return c.length ? '<div class="m-clips">'+c.map(x=>
+    '<button type="button" class="m-clip" data-clip="'+x.i+'">▶ '+esc(x.h.player||"하이라이트")+
+    (x.h.title ? " · "+esc(x.h.title) : "")+"</button>").join("")+"</div>" : "";
 }
 function renderRoster(){
   document.getElementById("roster").innerHTML=SQUAD.map(n=>
@@ -1252,31 +1269,72 @@ function renderRoster(){
 }
 /* Clips come from the page build, never from the API, so this renders once and
    then no-ops - an auto-refresh must not tear out a video someone is watching. */
-let hlSig=null;
-function renderHighlights(){
+/* Clips come from the page build; the section re-renders only when the list or the
+   member filter changes, so an auto-refresh never tears out a video being watched. */
+let hlSig=null, hlWho="";
+const DOW="일월화수목금토";
+function dayLabel(d){
+  const t=new Date(String(d)+"T00:00:00Z");
+  return isNaN(t) ? (d||"날짜 없음") : (t.getUTCMonth()+1)+"/"+t.getUTCDate()+" ("+DOW[t.getUTCDay()]+")";
+}
+const matchOf = h => h.match ? state.matches.filter(m=>m.id===h.match)[0] || null : null;
+function clipCard(h, i){
+  const ttl=esc(h.title||"하이라이트"), who=esc(h.player||""), m=matchOf(h);
+  const where = m ? mapName(m.map)+(m.rank!=null ? " "+m.rank+"위" : "")+" · "+
+    (m.at ? String(new Date(m.at).getHours()).padStart(2,"0")+":"+String(new Date(m.at).getMinutes()).padStart(2,"0") : "") : "";
+  const sub=[where,h.note].filter(Boolean).map(esc).join(" · ");
+  const media = h.kind==="yt"
+    ? '<button class="hl-play" data-yt="'+esc(h.id)+'" aria-label="'+ttl+' 재생">'
+      + '<img loading="lazy" decoding="async" alt="" src="https://i.ytimg.com/vi/'+esc(h.id)+'/hqdefault.jpg">'
+      + '<span class="hl-tri"></span></button>'
+    : '<video controls playsinline preload="none" src="'+esc(h.url)+'"></video>';
+  return '<figure class="hl" id="hl-'+i+'">'+media+'<figcaption><div class="hl-t">'+ttl+'</div>'
+    + '<div class="hl-s">'+(who?'<b>'+who+'</b>':'')+(who&&sub?' · ':'')+sub+'</div></figcaption></figure>';
+}
+function renderHighlights(force){
   const list=Array.isArray(state.highlights)?state.highlights:[];
-  const sig=JSON.stringify(list);
-  if(sig===hlSig) return;
+  const sig=JSON.stringify(list)+"|"+hlWho;
+  if(sig===hlSig && !force) return;
   hlSig=sig;
   const sec=document.getElementById("hl-sec"), wrap=document.getElementById("hls");
   sec.hidden=wrap.hidden=!list.length;
   if(!list.length){ wrap.innerHTML=""; return; }
   document.getElementById("hl-meta").textContent=list.length+"개";
-  wrap.innerHTML=list.map(h=>{
-    const ttl=esc(h.title||"하이라이트"), who=esc(h.player||"");
-    const sub=[h.date,h.note].filter(Boolean).map(esc).join(" · ");
-    const media = h.kind==="yt"
-      ? '<button class="hl-play" data-yt="'+esc(h.id)+'" aria-label="'+ttl+' 재생">'
-        + '<img loading="lazy" decoding="async" alt="" src="https://i.ytimg.com/vi/'+esc(h.id)+'/hqdefault.jpg">'
-        + '<span class="hl-tri"></span></button>'
-      : '<video controls playsinline preload="none" src="'+esc(h.url)+'"></video>';
-    return '<figure class="hl">'+media+'<figcaption><div class="hl-t">'+ttl+'</div>'
-      + '<div class="hl-s">'+(who?'<b>'+who+'</b>':'')+(who&&sub?' · ':'')+sub+'</div></figcaption></figure>';
-  }).join("");
+  /* game day first, then the order the matches were played */
+  const at = h => { const m=matchOf(h); return m ? String(m.at||"") : ""; };
+  const rows=list.map((h,i)=>({h:h,i:i})).sort((a,b)=>
+    String(b.h.date||"").localeCompare(String(a.h.date||"")) || at(b.h).localeCompare(at(a.h)));
+  const count={};
+  list.forEach(h=>{ if(h.player) count[h.player]=(count[h.player]||0)+1; });
+  const names=SQUAD.filter(n=>count[n]).concat(Object.keys(count).filter(n=>SQUAD.indexOf(n)<0));
+  if(hlWho && !count[hlWho]) hlWho="";
+  const chips = names.length>1
+    ? '<div class="hl-chips" role="group" aria-label="멤버별 보기">'+
+      [""].concat(names).map(n=>'<button type="button" data-who="'+esc(n)+'" aria-pressed="'+(n===hlWho)+'">'+
+        (n ? esc(n)+"<small>"+count[n]+"</small>" : "전체<small>"+list.length+"</small>")+"</button>").join("")+"</div>"
+    : "";
+  const shown=rows.filter(x=>!hlWho || x.h.player===hlWho);
+  const days=[], byDay={};
+  shown.forEach(x=>{ const d=x.h.date||""; if(!byDay[d]){ byDay[d]=[]; days.push(d); } byDay[d].push(x); });
+  wrap.innerHTML=chips+days.map(d=>
+    '<div class="hl-day"><h3>'+esc(dayLabel(d))+"<span>"+byDay[d].length+"개</span></h3>"+
+    '<div class="hls-grid">'+byDay[d].map(x=>clipCard(x.h,x.i)).join("")+"</div></div>").join("");
+}
+/* jump from a match card to its clip and start it */
+function playClip(i){
+  const h=(state.highlights||[])[i]; if(!h) return;
+  if(hlWho && h.player!==hlWho){ hlWho=""; renderHighlights(true); }
+  const el=document.getElementById("hl-"+i); if(!el) return;
+  el.scrollIntoView({behavior:"smooth", block:"center"});
+  el.classList.add("flash"); setTimeout(()=>el.classList.remove("flash"), 1600);
+  const b=el.querySelector(".hl-play");
+  if(b) b.click(); else { const v=el.querySelector("video"); if(v) v.play().catch(()=>{}); }
 }
 
 /* The container outlives each re-render, so one listener is enough. */
 document.getElementById("hls").addEventListener("click", e=>{
+  const c=e.target.closest("[data-who]");
+  if(c){ hlWho=c.getAttribute("data-who")||""; renderHighlights(true); return; }
   const b=e.target.closest(".hl-play"); if(!b) return;
   const id=b.getAttribute("data-yt");
   if(!/^[A-Za-z0-9_-]{11}$/.test(id||"")) return;
@@ -1285,6 +1343,10 @@ document.getElementById("hls").addEventListener("click", e=>{
   f.title="하이라이트"; f.loading="lazy"; f.allowFullscreen=true;
   f.allow="autoplay; encrypted-media; picture-in-picture; fullscreen";
   b.replaceWith(f);
+});
+
+document.getElementById("matches").addEventListener("click", e=>{
+  const b=e.target.closest(".m-clip"); if(b) playClip(+b.getAttribute("data-clip"));
 });
 
 function renderAll(){
