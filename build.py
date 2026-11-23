@@ -230,10 +230,13 @@ union_sig = hashlib.sha1((",".join(sorted(union)) + "|hl:" + hl_sig)
                          .encode("utf-8")).hexdigest()
 if "--force" not in sys.argv and OUT_JSON.exists():
     try:
-        prev = json.loads(OUT_JSON.read_text(encoding="utf-8")).get("unionSig")
+        _prev = json.loads(OUT_JSON.read_text(encoding="utf-8"))
+        prev, prev_pending = _prev.get("unionSig"), int(_prev.get("foesPending") or 0)
     except Exception:
-        prev = None
-    if prev == union_sig:
+        prev, prev_pending = None, 0
+    if prev_pending:
+        print("상대 조회가 %d명 남아 있어 계속 진행합니다" % prev_pending, file=sys.stderr)
+    if prev == union_sig and not prev_pending:
         print("새 경기도 없고 하이라이트도 그대로 - 빌드 생략 (호출 1회 사용)", file=sys.stderr)
         sys.exit(0)
 
@@ -277,6 +280,16 @@ def analyse(mid):
                "dmgIn": 0.0, "dmgEnemy": 0.0}
            for n in members}
     weapons = {n: collections.Counter() for n in members}
+    foes = collections.OrderedDict()   # accountId -> {"name", "knock": [...], "kill": [...]}
+
+    def foe(att, vic, what):
+        """att hurt squad member vic. Teammates (same teamId) and the zone never count."""
+        aid, vid = att.get("accountId"), vic.get("accountId")
+        if vid not in accts or not aid or aid in accts or att.get("teamId") == vic.get("teamId"):
+            return
+        f = foes.setdefault(aid, {"id": aid, "name": att.get("name") or "?", "knock": [], "kill": []})
+        if NAME[vid] not in f[what]:
+            f[what].append(NAME[vid])
 
     url = next((i["attributes"]["URL"] for i in inc
                 if i.get("type") == "asset" and i["attributes"].get("name") == "telemetry"), None)
@@ -349,6 +362,7 @@ def analyse(mid):
                             and att.get("teamId") != vic.get("teamId"):
                         tel[NAME[a]]["dmgEnemy"] += dmg
             elif T == "LogPlayerMakeGroggy":
+                foe(e.get("attacker") or {}, e.get("victim") or {}, "knock")
                 v = (e.get("victim") or {}).get("accountId")
                 if v in state:
                     state[v] = "groggy"
@@ -366,6 +380,7 @@ def analyse(mid):
                         tel[NAME[rv]]["revSec"] += t1 - t0
                         tel[NAME[rv]]["revN"] += 1
             elif T == "LogPlayerKillV2":
+                foe(e.get("killer") or {}, e.get("victim") or {}, "kill")
                 victim = (e.get("victim") or {}).get("accountId")
                 killer = (e.get("killer") or {}).get("accountId")
                 causer = (e.get("killerDamageInfo") or {}).get("damageCauserName")
@@ -396,7 +411,7 @@ def analyse(mid):
                            for k, v in tel[n].items()}
     return {"id": mid, "at": attrs.get("createdAt"), "map": attrs.get("mapName"),
             "dur": attrs.get("duration"), "rank": roster["attributes"]["stats"].get("rank"),
-            "rosters": rosters, "members": members,
+            "rosters": rosters, "members": members, "foes": list(foes.values()),
             "randoms": [part[p].get("name") for p in pids
                         if p in part and part[p].get("playerId") not in NAME]}, weapons
 
@@ -441,6 +456,66 @@ if season_start:
     print("season start %s (from %s) - dropped %d older matches"
           % (season_start, cands[0][2], dropped), file=sys.stderr)
 
+# ---------- opponents: one ranked lookup per player per season ----------
+# Looked up once, shortly after the match, and kept in cache/foes.json - so the
+# numbers sit close to that player's level when we met them, and an hourly run only
+# pays for new opponents. Paced under the 10/min limit and capped per run so a
+# backlog never pushes a GitHub Actions job past its timeout; the rest waits for the
+# next run (the early exit above knows to keep going while any are pending).
+FOE_CACHE = ROOT / "cache" / "foes.json"
+FOE_MAX = int(os.environ.get("FOE_MAX") or 40)
+
+
+def foe_row(name, st):
+    st = st or {}
+    r = int(st.get("roundsPlayed") or 0)
+    k, a, de = int(st.get("kills") or 0), int(st.get("assists") or 0), int(st.get("deaths") or 0)
+    cur = st.get("currentTier") or {}
+    return {"name": name, "t": cur.get("tier"), "s": cur.get("subTier"),
+            "rp": int(st.get("currentRankPoint") or 0), "n": r,
+            # the API's own "kda" field comes back 0 for ranked, so compute it
+            "kda": round((k + a) / max(de, 1), 2) if r else None,
+            "dmg": int(round(float(st.get("damageDealt") or 0) / r)) if r else None,
+            "at": datetime.now(KST).strftime("%Y-%m-%d")}
+
+
+try:
+    foe_cache = json.loads(FOE_CACHE.read_text(encoding="utf-8"))
+except Exception:
+    foe_cache = {}
+known = foe_cache.get(cur_season) or {}
+need = []
+for m in matches:                                   # newest match first
+    for f in m.get("foes", []):
+        if f["id"] not in known and f["id"] not in need:
+            need.append(f["id"])
+names = {f["id"]: f["name"] for m in matches for f in m.get("foes", [])}
+looked = 0
+if need:
+    print("상대 %d명 조회 (이번 실행 최대 %d명, 6초 간격)" % (len(need), FOE_MAX), file=sys.stderr)
+for aid in need[:FOE_MAX]:
+    try:
+        d = json.loads(fetch(BASE + "/players/%s/seasons/%s/ranked" % (aid, cur_season), H))
+        st = (d["data"]["attributes"].get("rankedGameModeStats") or {}).get(MODE) or {}
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            print("  상대 조회 중단 (HTTP %s) - 다음 실행에서 이어 합니다" % e.code, file=sys.stderr)
+            break
+        st = {}
+    except Exception as e:
+        print("  상대 조회 중단 (%s) - 다음 실행에서 이어 합니다" % e, file=sys.stderr)
+        break
+    known[aid] = foe_row(names.get(aid, "?"), st)
+    looked += 1
+    if looked % 10 == 0:
+        print("  %d/%d" % (looked, min(len(need), FOE_MAX)), file=sys.stderr)
+    time.sleep(6.1)
+foes_pending = len(need) - looked
+FOE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+# only the current season is worth keeping
+FOE_CACHE.write_text(json.dumps({cur_season: known}, ensure_ascii=False, indent=0, sort_keys=True),
+                     encoding="utf-8")
+
 seed = {"fetchedAt": datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
         "shard": SHARD, "mode": MODE, "matchType": MATCH_TYPE,
         "seasonId": cur_season, "seasonStart": season_start, "squad": SQUAD, "telemetry": True,
@@ -449,7 +524,9 @@ seed = {"fetchedAt": datetime.now(KST).strftime("%Y-%m-%d %H:%M"),
                      "ranked": norm_ranked(ranked.get(f["accountId"], {}))} for f in found],
         "weapons": {nm: [[weap_label(k), v] for k, v in c.most_common(8)]
                     for nm, c in season_weapons.items()},
-        "matches": matches}
+        "matches": matches,
+        "foes": {aid: known[aid] for aid in names if aid in known},
+        "foesPending": foes_pending}
 if not matches:
     sys.exit("이번 시즌 경쟁전 스쿼드 경기를 찾지 못했습니다. 기존 페이지를 그대로 둡니다.")
 

@@ -150,13 +150,22 @@ td.tier{font-family:var(--f-num);font-size:12.5px;color:var(--ink-2);text-align:
 .m-line{font-family:var(--f-disp);font-size:9.5px;font-weight:700;letter-spacing:.08em;padding:1px 5px;border-radius:3px;border:1px solid var(--line-2);color:var(--ink-3)}
 .m-line.full{color:var(--gold);border-color:#4a3d1f}
 .mems{display:flex;flex-direction:column;gap:3px;margin-top:7px}
-.mem{display:grid;grid-template-columns:1fr auto;gap:10px;font-size:12.5px;align-items:baseline}
+.mem{display:grid;grid-template-columns:fit-content(10em) 1fr;gap:10px;font-size:12.5px;align-items:baseline}
 .mem .mn{display:flex;align-items:baseline;font-weight:600;min-width:0}
 .mem .mn .nm-t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.mem .mv{font-family:var(--f-num);font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.mem .mv{font-family:var(--f-num);font-size:12px;color:var(--ink-2);font-variant-numeric:tabular-nums;text-align:right;line-height:1.45}
 .mem .mv b{color:var(--ink);font-weight:700}
 .mem.rnd .mn,.mem.rnd .mv{color:var(--ink-3);font-weight:400}
 .mem.is-pom .mn{color:var(--gold)}
+/* opponents who knocked or killed a member: name + their season numbers, then who they got */
+.foes{margin-top:8px;padding-top:7px;border-top:1px dashed var(--line);display:flex;flex-direction:column;gap:5px}
+.foes-h{font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--ink-3)}
+.foe{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;font-size:12px;align-items:baseline}
+.foe .fn{color:#e98a7a;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.foe .fs{font-family:var(--f-num);color:var(--ink-2);white-space:nowrap;font-variant-numeric:tabular-nums}
+.foe .fs b{color:var(--ink);font-weight:700}
+.foe .fw{grid-column:1/-1;font-size:11px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile .v.small{font-size:17px;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pom-badge{flex:none;font-family:var(--f-disp);font-size:8.5px;font-weight:700;line-height:1.5;letter-spacing:.08em;color:#17120a;background:var(--gold);border-radius:3px;padding:0 4px;margin-left:6px}
 
 footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-size:11.5px;color:var(--ink-3);text-align:center;line-height:1.7}
@@ -240,6 +249,13 @@ footer{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-si
   </div>
   <div class="tiles" id="squad-tiles"></div>
   <p class="note" id="season-note" style="margin-top:9px"></p>
+
+  <div class="sec" id="foe-sec" hidden>
+    <div><span class="eyebrow">Opponents</span><h2>우리를 잡은 상대</h2></div>
+    <span class="meta" id="foe-meta"></span>
+  </div>
+  <div class="tiles" id="foe-tiles" hidden></div>
+  <p class="note" id="foe-note" style="margin-top:9px" hidden></p>
 
   <div class="sec">
     <div><span class="eyebrow">Placement trend</span><h2>스쿼드 등수 추이</h2></div>
@@ -371,6 +387,7 @@ const state = {
   players: SEED.players, matches: SEED.matches,
   weapons: SEED.weapons || {}, telemetryAt: SEED.telemetry ? SEED.fetchedAt : null,
   highlights: SEED.highlights || [],
+  foes: SEED.foes || {}, foesPending: SEED.foesPending || 0,
   metric: "kd", sort: {k:"rp", dir:-1}
 };
 
@@ -399,7 +416,7 @@ function saveCache(){
       v: 2, complete: true,
       at: Date.now(), fetchedAt: state.fetchedAt, telemetryAt: state.telemetryAt,
       seasonId: state.seasonId, seasonStart: state.seasonStart, seasonSrc: state.seasonSrc,
-      players: state.players, matches: state.matches, weapons: state.weapons
+      players: state.players, matches: state.matches, weapons: state.weapons, foes: state.foes
     }));
   }catch(e){ /* quota or private mode - the page still works */ }
 }
@@ -585,10 +602,14 @@ async function run(opts){
       "화면은 그대로 두었습니다. 잠시 후 다시 시도하세요.");
     out.sort((a,b)=>String(b.at||"").localeCompare(String(a.at||"")));
     /* a match already analysed keeps its telemetry numbers - only new games lose them */
-    const prevT={};
-    state.matches.forEach(m=>Object.keys(m.members||{}).forEach(n=>{
-      if(m.members[n].t) prevT[m.id+"|"+n]=m.members[n].t;
-    }));
+    const prevT={}, prevFoes={};
+    state.matches.forEach(m=>{
+      if(m.foes) prevFoes[m.id]=m.foes;
+      Object.keys(m.members||{}).forEach(n=>{
+        if(m.members[n].t) prevT[m.id+"|"+n]=m.members[n].t;
+      });
+    });
+    out.forEach(m=>{ if(prevFoes[m.id]) m.foes=prevFoes[m.id]; });
     out.forEach(m=>Object.keys(m.members||{}).forEach(n=>{
       const t=prevT[m.id+"|"+n]; if(t) m.members[n].t=t;
     }));
@@ -829,6 +850,25 @@ const teamDmg = m => memberNames(m).reduce((s,n)=>s+(+(m.members[n].damageDealt|
 const mmss = s => Math.floor(s/60)+":"+String(Math.round(s%60)).padStart(2,"0");
 const esc = s => String(s==null?"":s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const tierLabel = r => r.tier ? (r.tier+" "+(r.subTier||"")).trim() : "배치 전";
+
+/* One opponent's line on a match card. Numbers are their ranked squad season as
+   looked up shortly after the match, not this match alone. */
+function foeLine(f){
+  const s=state.foes[f.id];
+  let stat;
+  if(!s) stat='<span class="fs">조회 대기</span>';
+  else if(!s.n) stat='<span class="fs">경쟁전 스쿼드 기록 없음</span>';
+  else stat='<span class="fs">'+esc(tierLabel({tier:s.t, subTier:s.s}))+
+    ' · KDA <b>'+s.kda.toFixed(2)+'</b> · 평딜 <b>'+s.dmg+'</b></span>';
+  const who=[];
+  (f.knock||[]).concat(f.kill||[]).forEach(n=>{ if(who.indexOf(n)<0) who.push(n); });
+  const what=who.map(n=>{
+    const k=(f.knock||[]).indexOf(n)>-1, x=(f.kill||[]).indexOf(n)>-1;
+    return n+" "+(k&&x ? "기절·처치" : k ? "기절" : "처치");
+  }).join(", ");
+  return '<div class="foe" title="'+esc(s && s.n ? s.n+"판 · RP "+s.rp+" · "+s.at+" 조회" : f.name)+
+    '"><span class="fn">'+esc(f.name)+"</span>"+stat+'<span class="fw">'+esc(what)+"</span></div>";
+}
 
 /* Player of the Match: transparent weighted score over the members present. */
 function pomScore(m, name){
@@ -1076,6 +1116,46 @@ function renderSquadTiles(){
     '<div class="tile '+(x.cls||"")+'"><span class="k">'+esc(x.k)+'</span><span class="v">'+
     esc(x.v)+'</span><span class="s">'+esc(x.s)+'</span></div>').join("");
 }
+function renderFoes(){
+  const sec=document.getElementById("foe-sec"), el=document.getElementById("foe-tiles"),
+        note=document.getElementById("foe-note");
+  /* every meeting counts once per match, so a player who got us twice weighs twice */
+  const meet=[], seen={};
+  let pending=0;
+  state.matches.forEach(m=>(m.foes||[]).forEach(f=>{
+    const s=state.foes[f.id];
+    if(!s){ pending++; return; }
+    if(!s.n) return;
+    meet.push({f:f, s:s}); seen[f.id]=1;
+  }));
+  const show=meet.length>0;
+  sec.hidden=el.hidden=note.hidden=!show;
+  if(!show) return;
+  const avg=k=>meet.reduce((a,x)=>a+(+x.s[k]||0),0)/meet.length;
+  const tiers={};
+  meet.forEach(x=>{ const k=x.s.t||"?"; tiers[k]=(tiers[k]||0)+1; });
+  const topTier=Object.keys(tiers).sort((a,b)=>tiers[b]-tiers[a])[0];
+  const strong=meet.slice().sort((a,b)=>(b.s.rp||0)-(a.s.rp||0))[0];
+  /* our own squad on the same basis - (kills+assists)/deaths over the ranked season */
+  let k=0,a=0,d=0,dm=0,r=0;
+  state.players.forEach(p=>{ const q=p.ranked||{};
+    k+=+(q.kills||0); a+=+(q.assists||0); d+=+(q.deaths||0); dm+=+(q.damage||0); r+=+(q.rounds||0); });
+  const ourKda = d ? (k+a)/d : 0, ourDmg = r ? dm/r : 0;
+  document.getElementById("foe-meta").textContent=Object.keys(seen).length+"명 · "+meet.length+"회 만남";
+  const tiles=[
+    {k:"상대 평균 KDA", cls:"hero", v:avg("kda").toFixed(2), s:"우리 스쿼드 "+ourKda.toFixed(2)},
+    {k:"상대 평균 딜", v:Math.round(avg("dmg")).toLocaleString("ko-KR"), s:"우리 스쿼드 "+Math.round(ourDmg)},
+    {k:"가장 많은 티어", v:topTier, s:Math.round(tiers[topTier]/meet.length*100)+"% · "+tiers[topTier]+"회"},
+    {k:"가장 센 상대", small:true, v:tierLabel({tier:strong.s.t, subTier:strong.s.s}),
+     s:strong.f.name+" · KDA "+strong.s.kda.toFixed(2)}
+  ];
+  el.innerHTML=tiles.map(x=>
+    '<div class="tile '+(x.cls||"")+'"><span class="k">'+esc(x.k)+'</span><span class="v'+
+    (x.small?" small":"")+'">'+esc(x.v)+'</span><span class="s">'+esc(x.s)+"</span></div>").join("");
+  note.textContent="우리 멤버를 기절시키거나 처치한 다른 팀 유저입니다. 수치는 그 유저의 경쟁전 스쿼드 시즌 전체 값이고, "+
+    "경기 직후 한 번 조회해 저장하므로 그 판 당시 실력에 가깝습니다. 자기장·낙하로 쓰러진 경우와 같은 팀 랜덤은 빠집니다."+
+    (pending ? " 아직 조회하지 못한 상대 "+pending+"회분은 다음 자동 갱신에서 채워집니다." : "");
+}
 function renderTrend(){
   const fin=state.matches.filter(m=>m.rank!=null).slice().reverse();
   const el=document.getElementById("trend");
@@ -1134,7 +1214,7 @@ function renderMatches(){
       return '<div class="mem'+(isPom?" is-pom":"")+'" title="'+esc(tip)+
         '"><span class="mn"><span class="nm-t">'+esc(n)+"</span>"+
         (isPom?'<span class="pom-badge">POM</span>':"")+'</span><span class="mv"><b>'+
-        (s.kills||0)+"</b>킬 <b>"+Math.round(s.damageDealt||0)+"</b>딜 "+
+        (s.kills||0)+"</b>킬 <b>"+(s.assists||0)+"</b>어시 <b>"+Math.round(s.damageDealt||0)+"</b>딜 "+
         (t && t.dmgIn!=null ? "<b>"+Math.round(t.dmgIn)+"</b>받음 " : "")+
         mmss(s.timeSurvived||0)+(extra.length?" · "+esc(extra.join(" · ")):"")+"</span></div>";
     }).join("");
@@ -1146,7 +1226,10 @@ function renderMatches(){
       '<div class="m-body"><div class="m-top"><span class="m-map">'+esc(mapName(m.map))+
       '</span><span class="m-date">'+esc(date)+'</span><span class="m-line'+
       (names.length===full?" full":"")+'">'+names.length+"인"+
-      (names.length===full?" 전원":"")+'</span></div><div class="mems">'+mems+rnds+"</div></div></div>";
+      (names.length===full?" 전원":"")+'</span></div><div class="mems">'+mems+rnds+"</div>"+
+      ((m.foes||[]).length
+        ? '<div class="foes"><span class="foes-h">잡은 상대</span>'+m.foes.map(foeLine).join("")+"</div>"
+        : "")+"</div></div>";
   }).join("");
 }
 function renderRoster(){
@@ -1195,7 +1278,7 @@ function renderAll(){
   document.getElementById("src-note").textContent =
     (state.live ? "브라우저에서 직접 조회 " : "") + state.fetchedAt + " KST 기준";
   renderRoster(); renderTable(); renderBars(); renderAwards(); renderHighlights();
-  renderSquadTiles(); renderTrend(); renderMatches(); renderSnapshot(); paintMeter();
+  renderSquadTiles(); renderFoes(); renderTrend(); renderMatches(); renderSnapshot(); paintMeter();
 }
 
 /* ---------- labels + wire ---------- */
@@ -1231,6 +1314,7 @@ const cached=loadCache();
 if(cached){
   state.players=cached.players; state.matches=cached.matches;
   state.weapons=cached.weapons||{}; state.telemetryAt=cached.telemetryAt||null;
+  state.foes=Object.assign({}, cached.foes||{}, SEED.foes||{});
   state.seasonId=cached.seasonId||state.seasonId;
   state.seasonStart=cached.seasonStart||state.seasonStart;
   state.seasonSrc=cached.seasonSrc||state.seasonSrc;

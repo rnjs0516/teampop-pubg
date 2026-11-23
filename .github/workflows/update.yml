@@ -37,7 +37,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs
+          git add docs cache
           if git diff --cached --quiet; then
             echo "새 경기 없음 - 푸시 생략"
           else
