@@ -2,11 +2,11 @@
 """하이라이트 클립을 highlights.json 에 추가/확인/삭제합니다.
 
   python clip.py "https://youtu.be/XXXX" -p gunerz_ -t "1v4 클러치"
-      -> 최근 경기 목록이 뜨고 번호를 고르면 그 경기 카드에 ▶ 버튼이 붙습니다.
-         날짜는 경기 날짜로 자동 입력됩니다. 그냥 Enter 를 누르면 경기 없이 등록합니다.
+      -> gunerz_ 의 클립으로 등록. 멤버당 3개까지 유지하고, 넘으면 그 멤버의
+         가장 오래된 클립을 빼고 알려줍니다.
   python clip.py "https://youtu.be/XXXX" -p gunerz_ -t "1v4 클러치" -m 3
-      -> 묻지 않고 3번 경기로 등록
-  python clip.py --matches          최근 경기 목록만 보기
+      -> (선택) --matches 목록의 3번 경기에 연결 - 그 경기 카드에 ▶ 버튼이 붙습니다
+  python clip.py --matches          최근 경기 목록 보기
   python clip.py --list             등록된 클립 보기
   python clip.py --remove 2         2번 클립 삭제
 
@@ -23,6 +23,7 @@ HL = ROOT / "highlights.json"
 DATA = ROOT / "docs" / "data.json"
 KST = timezone(timedelta(hours=9))
 SHOW = 20
+KEEP = 3        # clips per member
 MAPS = {"Baltic_Main": "에란겔", "Erangel_Main": "에란겔", "Desert_Main": "미라마",
         "Savage_Main": "사녹", "DihorOtok_Main": "비켄디", "Tiger_Main": "태이고",
         "Neon_Main": "론도", "Kiki_Main": "데스턴", "Summerland_Main": "카라킨",
@@ -124,13 +125,18 @@ if not a.url:
     show(rows)
     sys.exit(0)
 
+if not a.player.strip():
+    sys.exit("누구의 클립인지 -p 로 적어주세요. 예: -p gunerz_")
+squad = []
+try:
+    squad = json.loads(DATA.read_text(encoding="utf-8")).get("squad") or []
+except Exception:
+    pass
+if squad and a.player not in squad:
+    print("참고: %s 는 스쿼드 명단(%s)에 없습니다. 그대로 등록합니다." % (a.player, ", ".join(squad)))
+
 ms = matches()
 pick = a.match
-if pick is None and sys.stdin.isatty() and ms:
-    print("어느 경기의 장면인가요? (그냥 Enter = 경기 없이 등록)\n")
-    show_matches(ms)
-    ans = input("\n번호: ").strip()
-    pick = int(ans) if ans.isdigit() else 0
 m = None
 if pick:
     if not 1 <= pick <= min(SHOW, len(ms)):
@@ -146,7 +152,14 @@ row = {"player": a.player, "title": a.title or "하이라이트", "url": a.url,
 if m:
     row["match"] = m["id"]
 rows.append(row)
+# keep the newest KEEP per member: drop that member's oldest beyond the cap
+mine = [i for i, c in enumerate(rows) if c.get("player") == a.player]
+mine.sort(key=lambda i: (rows[i].get("date") or "", i))
+for i in sorted(mine[:max(0, len(mine) - KEEP)], reverse=True):
+    print("%s 의 클립이 %d개를 넘어 가장 오래된 것을 뺐습니다: %s (%s)"
+          % (a.player, KEEP, rows[i].get("title"), rows[i].get("date")))
+    rows.pop(i)
 save(rows)
-print("\n추가했습니다. 현재 %d개." % len(rows))
+print("\n추가했습니다. 현재 %d개 (%s %d개)." % (len(rows), a.player, min(len(mine), KEEP)))
 show(rows)
 print("\n이제 update.bat 을 실행하면 페이지에 반영되고 푸시됩니다.")

@@ -95,12 +95,8 @@ input:focus{border-color:var(--gold);outline:none}
    click, so opening the page on a phone costs one small image per clip, not an
    embedded player each. A self-hosted file uses preload=none for the same reason. */
 .hls-grid{display:grid;grid-template-columns:1fr;gap:12px}
-.hl-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
-.hl-chips button{font-size:12.5px;padding:6px 11px;border-radius:999px;font-weight:600}
-.hl-chips button[aria-pressed="true"]{border-color:var(--gold);color:var(--gold)}
-.hl-chips button small{color:var(--ink-3);font-weight:400;margin-left:4px}
 .hl-day+.hl-day{margin-top:18px}
-.hl-day h3{font-size:13px;font-weight:700;color:var(--ink-2);margin:0 0 8px;font-family:var(--f-num)}
+.hl-day h3{font-size:14px;font-weight:700;color:var(--mark-self);margin:0 0 8px}
 .hl-day h3 span{color:var(--ink-3);font-weight:400;margin-left:6px}
 .hl.flash{outline:2px solid var(--gold);outline-offset:2px}
 .m-clips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
@@ -1285,7 +1281,7 @@ function renderRoster(){
    then no-ops - an auto-refresh must not tear out a video someone is watching. */
 /* Clips come from the page build; the section re-renders only when the list or the
    member filter changes, so an auto-refresh never tears out a video being watched. */
-let hlSig=null, hlWho="";
+let hlSig=null;
 const DOW="일월화수목금토";
 function dayLabel(d){
   const t=new Date(String(d)+"T00:00:00Z");
@@ -1293,51 +1289,42 @@ function dayLabel(d){
 }
 const matchOf = h => h.match ? state.matches.filter(m=>m.id===h.match)[0] || null : null;
 function clipCard(h, i){
-  const ttl=esc(h.title||"하이라이트"), who=esc(h.player||""), m=matchOf(h);
+  const ttl=esc(h.title||"하이라이트"), m=matchOf(h);
   const where = m ? mapName(m.map)+(m.rank!=null ? " "+m.rank+"위" : "")+" · "+
     (m.at ? String(new Date(m.at).getHours()).padStart(2,"0")+":"+String(new Date(m.at).getMinutes()).padStart(2,"0") : "") : "";
-  const sub=[where,h.note].filter(Boolean).map(esc).join(" · ");
+  const sub=[where || (h.date ? dayLabel(h.date) : ""), h.note].filter(Boolean).map(esc).join(" · ");
   const media = h.kind==="yt"
     ? '<button class="hl-play" data-yt="'+esc(h.id)+'" aria-label="'+ttl+' 재생">'
       + '<img loading="lazy" decoding="async" alt="" src="https://i.ytimg.com/vi/'+esc(h.id)+'/hqdefault.jpg">'
       + '<span class="hl-tri"></span></button>'
     : '<video controls playsinline preload="none" src="'+esc(h.url)+'"></video>';
   return '<figure class="hl" id="hl-'+i+'">'+media+'<figcaption><div class="hl-t">'+ttl+'</div>'
-    + '<div class="hl-s">'+(who?'<b>'+who+'</b>':'')+(who&&sub?' · ':'')+sub+'</div></figcaption></figure>';
+    + '<div class="hl-s">'+sub+'</div></figcaption></figure>';
 }
 function renderHighlights(force){
   const list=Array.isArray(state.highlights)?state.highlights:[];
-  const sig=JSON.stringify(list)+"|"+hlWho;
+  const sig=JSON.stringify(list);
   if(sig===hlSig && !force) return;
   hlSig=sig;
   const sec=document.getElementById("hl-sec"), wrap=document.getElementById("hls");
   sec.hidden=wrap.hidden=!list.length;
   if(!list.length){ wrap.innerHTML=""; return; }
   document.getElementById("hl-meta").textContent=list.length+"개";
-  /* game day first, then the order the matches were played */
-  const at = h => { const m=matchOf(h); return m ? String(m.at||"") : ""; };
-  const rows=list.map((h,i)=>({h:h,i:i})).sort((a,b)=>
-    String(b.h.date||"").localeCompare(String(a.h.date||"")) || at(b.h).localeCompare(at(a.h)));
-  const count={};
-  list.forEach(h=>{ if(h.player) count[h.player]=(count[h.player]||0)+1; });
-  const names=SQUAD.filter(n=>count[n]).concat(Object.keys(count).filter(n=>SQUAD.indexOf(n)<0));
-  if(hlWho && !count[hlWho]) hlWho="";
-  const chips = names.length>1
-    ? '<div class="hl-chips" role="group" aria-label="멤버별 보기">'+
-      [""].concat(names).map(n=>'<button type="button" data-who="'+esc(n)+'" aria-pressed="'+(n===hlWho)+'">'+
-        (n ? esc(n)+"<small>"+count[n]+"</small>" : "전체<small>"+list.length+"</small>")+"</button>").join("")+"</div>"
-    : "";
-  const shown=rows.filter(x=>!hlWho || x.h.player===hlWho);
-  const days=[], byDay={};
-  shown.forEach(x=>{ const d=x.h.date||""; if(!byDay[d]){ byDay[d]=[]; days.push(d); } byDay[d].push(x); });
-  wrap.innerHTML=chips+days.map(d=>
-    '<div class="hl-day"><h3>'+esc(dayLabel(d))+"<span>"+byDay[d].length+"개</span></h3>"+
-    '<div class="hls-grid">'+byDay[d].map(x=>clipCard(x.h,x.i)).join("")+"</div></div>").join("");
+  /* one block per member in squad order, their clips newest first (the build keeps
+     at most three each) */
+  const by={};
+  list.forEach((h,i)=>{ const k=h.player||""; (by[k]=by[k]||[]).push({h:h,i:i}); });
+  const names=SQUAD.filter(n=>by[n]).concat(Object.keys(by).filter(n=>SQUAD.indexOf(n)<0 && n))
+    .concat(by[""] ? [""] : []);
+  wrap.innerHTML=names.map(n=>{
+    const rows=by[n].sort((a,b)=>String(b.h.date||"").localeCompare(String(a.h.date||"")) || b.i-a.i);
+    return '<div class="hl-day"><h3>'+(n ? esc(n) : "기타")+"<span>"+rows.length+"개</span></h3>"+
+      '<div class="hls-grid">'+rows.map(x=>clipCard(x.h,x.i)).join("")+"</div></div>";
+  }).join("");
 }
 /* jump from a match card to its clip and start it */
 function playClip(i){
   const h=(state.highlights||[])[i]; if(!h) return;
-  if(hlWho && h.player!==hlWho){ hlWho=""; renderHighlights(true); }
   const el=document.getElementById("hl-"+i); if(!el) return;
   el.scrollIntoView({behavior:"smooth", block:"center"});
   el.classList.add("flash"); setTimeout(()=>el.classList.remove("flash"), 1600);
@@ -1347,8 +1334,6 @@ function playClip(i){
 
 /* The container outlives each re-render, so one listener is enough. */
 document.getElementById("hls").addEventListener("click", e=>{
-  const c=e.target.closest("[data-who]");
-  if(c){ hlWho=c.getAttribute("data-who")||""; renderHighlights(true); return; }
   const b=e.target.closest(".hl-play"); if(!b) return;
   const id=b.getAttribute("data-yt");
   if(!/^[A-Za-z0-9_-]{11}$/.test(id||"")) return;

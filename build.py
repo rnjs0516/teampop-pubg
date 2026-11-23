@@ -59,6 +59,9 @@ def yt_id(u):
     return None
 
 
+HL_KEEP = 3     # clips per member on the page
+
+
 def load_highlights():
     if not HL.exists():
         return []
@@ -109,7 +112,17 @@ def load_highlights():
             continue
         out.append(item)
 
-    out.sort(key=lambda c: c.get("date") or "", reverse=True)
+    # newest first; at most HL_KEEP per member - older ones beyond that stay in the
+    # file but are not published
+    out = [c for _, c in sorted(enumerate(out), key=lambda x: (x[1].get("date") or "", x[0]), reverse=True)]
+    seen, kept = collections.Counter(), []
+    for c in out:
+        seen[c["player"]] += 1
+        if seen[c["player"]] <= HL_KEEP:
+            kept.append(c)
+    if len(kept) < len(out):
+        print("  멤버당 %d개까지만 올립니다 - 오래된 %d개 제외" % (HL_KEEP, len(out) - len(kept)), file=sys.stderr)
+    out = kept
     print("하이라이트 %d개%s" % (len(out), " (%d개 건너뜀)" % skipped if skipped else ""), file=sys.stderr)
     return out
 
