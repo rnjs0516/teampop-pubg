@@ -951,30 +951,33 @@ const AWARDS=[
   {k:"team",      icon:"🤝", title:"팀워크왕",   desc:"소생, 팀원 지원, 교전 지원", telem:false,
    score:a=>a.revives*2 + a.assistEff + a.dbnoAssist,
    value:a=>"소생 "+a.revives+" · 지원 "+a.assistEff+" · 기절 "+a.dbnoAssist},
-  {k:"swim",      icon:"🏊", title:"수영 장인",   desc:"물에서 보낸 시간과 헤엄친 거리", telem:true,
-   score:a=>a.swimSec,
-   value:a=>Math.round(a.swimSec)+"초 · "+Math.round(a.swimDist)+"m"},
-  {k:"fly",       icon:"🪂", title:"비행 장인",   desc:"글라이더·구조용 비행정 탑승 시간", telem:true,
-   score:a=>a.flySec,
-   value:a=>Math.round(a.flySec)+"초 · "+a.flyN+"회 탑승"+
-     (a.n? " · 낙하 평균 "+Math.round(a.chuteDist/a.n)+"m" : "")},
-  {k:"tank",      icon:"🛡️", title:"몸빵 장인",   desc:"경기당 적에게 받은 피해 (기절 전 깎인 체력)", telem:true,
-   score:a=>a.takenN? a.dmgEnemy/a.takenN : 0,
-   value:a=>a.takenN? "경기당 "+Math.round(a.dmgEnemy/a.takenN)+" · 총 "+
-     Math.round(a.dmgEnemy).toLocaleString("ko-KR") : "—"},
-  {k:"drive",     icon:"🚗", title:"장거리운전 장인", desc:"경기당 평균 운전 시간 (운전석 기준)", telem:true,
-   score:a=>a.n? a.driveSec/a.n : 0,
-   value:a=>a.n? "경기당 "+mmss(a.driveSec/a.n)+" · 총 "+Math.round(a.driveSec/60)+"분 · "+
-     (a.rideDist/1000).toFixed(1)+"km" : "—"}
+  {k:"swim",      icon:"🏊", title:"수영 장인",   desc:"한 경기에서 물속에 가장 오래 있었던 기록", telem:true,
+   score:a=>a.best.swim.v + a.swimSec/1e7,      /* tie: season total breaks it */
+   value:a=>mmss(a.best.swim.v)+" · "+Math.round(a.best.swim.x)+"m · "+bestWhere(a.best.swim.m)},
+  {k:"fly",       icon:"🪂", title:"비행 장인",   desc:"한 경기 글라이더·구조용 비행정 최장 탑승", telem:true,
+   score:a=>a.best.fly.v + a.flySec/1e7,
+   value:a=>mmss(a.best.fly.v)+" · "+bestWhere(a.best.fly.m)},
+  {k:"tank",      icon:"🛡️", title:"몸빵 장인",   desc:"한 경기에 적에게 받은 피해 최대 (기절 전 깎인 체력)", telem:true,
+   score:a=>a.best.tank.v + a.dmgEnemy/1e8,
+   value:a=>Math.round(a.best.tank.v)+" · "+bestWhere(a.best.tank.m)},
+  {k:"drive",     icon:"🚗", title:"장거리운전 장인", desc:"한 경기 최장 운전 시간 (운전석 기준)", telem:true,
+   score:a=>a.best.drive.v + a.driveSec/1e7,
+   value:a=>mmss(a.best.drive.v)+" · "+bestWhere(a.best.drive.m)}
 ];
 
+function bestWhere(m){
+  if(!m || !m.at) return "";
+  const d=new Date(m.at);
+  return (d.getMonth()+1)+"/"+d.getDate()+" "+mapName(m.map);
+}
 function awardStats(){
   const acc={}, hasT=state.matches.some(m=>memberNames(m).some(n=>m.members[n].t));
   SQUAD.forEach(n=>{ acc[n]={name:n,n:0,kills:0,dmg:0,teamKills:0,teamDmg:0,hs:0,surv:0,
     rankSum:0,revives:0,assists:0,dbno:0,clutch:0,first:0,nade:0,tAssist:0,revSec:0,revN:0,
     swimSec:0,swimDist:0,flySec:0,flyN:0,chuteSec:0,chuteDist:0,
     driveSec:0,driveN:0,rideDist:0,dmgIn:0,dmgEnemy:0,takenN:0,
-    topWeap:"",topWeapN:0,assistEff:0,dbnoAssist:0}; });
+    topWeap:"",topWeapN:0,assistEff:0,dbnoAssist:0,
+    best:{tank:{v:0,m:null}, swim:{v:0,x:0,m:null}, fly:{v:0,m:null}, drive:{v:0,m:null}}}; });
   state.matches.forEach(m=>{
     const names=memberNames(m);
     const tk=names.reduce((s,n)=>s+(+(m.members[n].kills||0)),0);
@@ -994,7 +997,10 @@ function awardStats(){
              a.flySec+=t.flySec||0; a.flyN+=t.flyN||0;
              a.chuteSec+=t.chuteSec||0; a.chuteDist+=t.chuteDist||0;
              a.driveSec+=t.driveSec||0; a.driveN+=t.driveN||0;
-             if(t.dmgIn!=null){ a.dmgIn+=+t.dmgIn; a.dmgEnemy+=+(t.dmgEnemy||0); a.takenN++; } }
+             if(t.dmgIn!=null){ a.dmgIn+=+t.dmgIn; a.dmgEnemy+=+(t.dmgEnemy||0); a.takenN++; }
+             const b=a.best, up=(k,v,x)=>{ if(v>b[k].v){ b[k].v=v; b[k].m=m; if(x!=null) b[k].x=x; } };
+             up("tank", +(t.dmgEnemy||0)); up("swim", +(t.swimSec||0), +(t.swimDist||0));
+             up("fly", +(t.flySec||0)); up("drive", +(t.driveSec||0)); }
     });
   });
   SQUAD.forEach(n=>{
