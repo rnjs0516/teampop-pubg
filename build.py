@@ -65,15 +65,24 @@ HL_KEEP = 3     # clips per member on the page
 def load_highlights():
     if not HL.exists():
         return []
+    # The file is edited by hand on github.com, where one missing comma is easy.
+    # Never let that wipe the section: fall back to the clips already published.
+    def keep_published(why):
+        try:
+            prev = json.loads(OUT_JSON.read_text(encoding="utf-8")).get("highlights") or []
+        except Exception:
+            prev = []
+        print("::warning title=highlights.json::%s - 이미 올라가 있던 하이라이트 %d개를 그대로 둡니다"
+              % (why, len(prev)))   # stdout: Actions shows ::warning as an annotation
+        return prev
+
     try:
         raw = json.loads(HL.read_text(encoding="utf-8"))
     except Exception as e:
-        print("highlights.json 을 읽지 못했습니다 (%s) - 하이라이트 없이 빌드합니다" % e, file=sys.stderr)
-        return []
+        return keep_published("highlights.json 을 읽지 못했습니다 (%s)" % e)
     rows = raw.get("clips") if isinstance(raw, dict) else raw
     if not isinstance(rows, list):
-        print("highlights.json 형식이 올바르지 않습니다 - clips 배열이 필요합니다", file=sys.stderr)
-        return []
+        return keep_published("highlights.json 형식이 올바르지 않습니다 - clips 배열이 필요합니다")
 
     out, skipped = [], 0
     for i, c in enumerate(rows):
