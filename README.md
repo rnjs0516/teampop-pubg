@@ -69,29 +69,18 @@ PC 가 켜져 있어야 실행됩니다.
 
 ## 하이라이트 클립
 
-`highlights.json` 에 적은 클립이 페이지의 **하이라이트** 섹션에 뜹니다. 비어 있으면 섹션이 숨습니다.
-
-손으로 고치지 않고 `clip.py` 를 쓰면 됩니다.
+멤버마다 하이라이트 클립을 1~3개씩 올려둡니다. 페이지의 **하이라이트** 섹션에 멤버별로 최신순으로 나오고, 등록된 클립이 없으면 섹션이 숨습니다.
 
 ```powershell
-python clip.py "https://youtu.be/XXXXXXXXXXX" -p gunerz_ -t "1v4 클러치" -n "에란겔 막자기리"
+python clip.py "https://youtu.be/XXXXXXXXXXX" -p gunerz_ -t "1v4 클러치"
 python clip.py --list          # 등록된 클립 보기
 python clip.py --remove 2      # 2번 삭제
 .\update.bat                   # 페이지 반영 + 푸시
 ```
 
-파일 형식은 이렇습니다.
-
-```json
-{
-  "clips": [
-    { "player": "gunerz_", "title": "1v4 클러치", "url": "https://youtu.be/XXXXXXXXXXX",
-      "date": "2026-11-09", "note": "에란겔 막자기리" }
-  ]
-}
-```
-
-`player` / `date` / `note` 는 없어도 됩니다. 최신 날짜가 위로 옵니다.
+- `-p` (누구 클립인지)는 꼭 적어야 합니다.
+- 멤버당 **3개까지** 유지합니다. 4번째를 넣으면 그 멤버의 가장 오래된 클립이 빠지고 무엇이 빠졌는지 알려줍니다. `highlights.json` 을 직접 고쳐 3개를 넘겨도 페이지에는 최신 3개만 올라갑니다.
+- (선택) `-m N` 으로 `python clip.py --matches` 목록의 N번 경기에 연결하면 그 경기 카드에 ▶ 버튼이 붙습니다.
 
 ### url 에 쓸 수 있는 것
 
