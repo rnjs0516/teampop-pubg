@@ -668,7 +668,15 @@ function analyseTelemetry(events, acctByName, namesPresent){
   const st={}; ids.forEach(a=>{ st[a]="alive"; });
   const groggy={}, swimOpen={}, airExit={}, rideOpen={}, driveOpen={};
   const AIRCRAFT={TransportAircraft:1, Aircraft:1};
-  const FLYRIDE={EmergencyPickup:1, Glider:1, MotorGlider:1};
+  /* flying = gliders only (vehicleType FlyingVehicle, vehicleId BP_Motorglider_*);
+     the rescue pickup and the mortar are neither flying nor driving */
+  const vkind=v=>{
+    const vt=(v||{}).vehicleType, vid=String((v||{}).vehicleId||"").toLowerCase();
+    if(AIRCRAFT[vt]) return "air";
+    if(vt==="FlyingVehicle" || vid.indexOf("glider")>-1) return "glider";
+    if(vt==="EmergencyPickup" || vt==="Mortar" || vid.indexOf("emergencypickup")>-1 || vid.indexOf("mortar")>-1) return "skip";
+    return "drive";
+  };
   let firstDone=false;
   function closeDrive(a, t1){
     const d=driveOpen[a];
@@ -692,26 +700,26 @@ function analyseTelemetry(events, acctByName, namesPresent){
         if(t0 && t1 && t1>=t0 && t1-t0<=1800000) o.swimSec+=(t1-t0)/1000;
       }
     }else if(T==="LogVehicleRide"){
-      const a=(e.character||{}).accountId, vt=(e.vehicle||{}).vehicleType;
+      const a=(e.character||{}).accountId, vk=vkind(e.vehicle);
       if(accts[a]){
-        if(FLYRIDE[vt]){
+        if(vk==="glider"){
           rideOpen[a]=Date.parse(e._D);
-        }else if(!AIRCRAFT[vt]){
+        }else if(vk==="drive"){
           let seat=e.seatIndex;
           if(seat==null) seat=(e.vehicle||{}).seatIndex;
           driveOpen[a]={t:Date.parse(e._D), seat:seat};   /* seat 0 is the driver */
         }
       }
     }else if(T==="LogVehicleLeave"){
-      const a=(e.character||{}).accountId, vt=(e.vehicle||{}).vehicleType;
+      const a=(e.character||{}).accountId, vk=vkind(e.vehicle);
       if(accts[a]){
-        if(AIRCRAFT[vt]){
+        if(vk==="air"){
           airExit[a]=Date.parse(e._D);
-        }else if(FLYRIDE[vt]){
+        }else if(vk==="glider"){
           const o=out[accts[a]], t0=rideOpen[a], t1=Date.parse(e._D);
           delete rideOpen[a];
           if(t0 && t1 && t1>=t0 && t1-t0<=1800000){ o.flySec+=(t1-t0)/1000; o.flyN++; }
-        }else{
+        }else if(vk==="drive"){
           closeDrive(a, Date.parse(e._D));
         }
       }
@@ -797,7 +805,7 @@ async function deepScan(){
               flySec:o.flySec, flyN:o.flyN, chuteSec:o.chuteSec, chuteDist:o.chuteDist,
               driveSec:o.driveSec, driveN:o.driveN,
               dmgIn:Math.round(o.dmgIn*10)/10, dmgEnemy:Math.round(o.dmgEnemy*10)/10,
-              w:o.weapons};
+              w:o.weapons, tv:2};
             seasonWeapons[n]=seasonWeapons[n]||{};
             Object.keys(o.weapons).forEach(w=>{
               seasonWeapons[n][w]=(seasonWeapons[n][w]||0)+o.weapons[w];
@@ -954,7 +962,7 @@ const AWARDS=[
   {k:"swim",      icon:"🏊", title:"수영 장인",   desc:"한 경기에서 물속에 가장 오래 있었던 기록", telem:true,
    score:a=>a.best.swim.v + a.swimSec/1e7,      /* tie: season total breaks it */
    value:a=>mmss(a.best.swim.v)+" · "+Math.round(a.best.swim.x)+"m · "+bestWhere(a.best.swim.m)},
-  {k:"fly",       icon:"🪂", title:"비행 장인",   desc:"한 경기 글라이더·구조용 비행정 최장 탑승", telem:true,
+  {k:"fly",       icon:"🪂", title:"비행 장인",   desc:"한 경기 글라이더 최장 비행 (비상호출 제외)", telem:true,
    score:a=>a.best.fly.v + a.flySec/1e7,
    value:a=>mmss(a.best.fly.v)+" · "+bestWhere(a.best.fly.m)},
   {k:"tank",      icon:"🛡️", title:"몸빵 장인",   desc:"한 경기에 적에게 받은 피해 최대 (기절 전 깎인 체력)", telem:true,

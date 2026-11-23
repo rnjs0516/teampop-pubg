@@ -120,7 +120,23 @@ BASE = "https://api.pubg.com/shards/" + SHARD
 H = {"Authorization": "Bearer " + KEY, "Accept": "application/vnd.api+json", "Accept-Encoding": "gzip"}
 NOT_GROUND = {"TransportAircraft", "Aircraft", "EmergencyPickup", "Glider", "MotorGlider", "Parachute"}
 AIRCRAFT = {"TransportAircraft", "Aircraft"}
-FLYRIDE = {"EmergencyPickup", "Glider", "MotorGlider"}
+# Flying means a glider: telemetry calls it vehicleType "FlyingVehicle" (vehicleId
+# BP_Motorglider_*). The rescue pickup and the mortar are neither flying nor driving.
+FLYRIDE = {"FlyingVehicle"}
+NOT_DRIVEN = {"EmergencyPickup", "Mortar"}
+# bump when a telemetry-derived field changes meaning; older matches get re-analysed
+TEL_V = 2
+
+
+def vkind(v):
+    vt, vid = (v or {}).get("vehicleType"), str((v or {}).get("vehicleId") or "").lower()
+    if vt in AIRCRAFT:
+        return "air"
+    if vt in FLYRIDE or "glider" in vid:
+        return "glider"
+    if vt in NOT_DRIVEN or "emergencypickup" in vid or "mortar" in vid:
+        return "skip"
+    return "drive"
 THROWABLE = {"ProjGrenade_C": "수류탄", "ProjMolotov_C": "화염병", "ProjC4_C": "C4",
              "ProjStickyGrenade_C": "점착 폭탄", "ProjBluezoneGrenade_C": "블루존 수류탄",
              "ProjSpawnMolotovFireDebuff_C": "화염병"}
@@ -324,10 +340,10 @@ def analyse(mid):
             elif T == "LogVehicleRide":
                 a = (e.get("character") or {}).get("accountId")
                 if a in accts:
-                    vt = (e.get("vehicle") or {}).get("vehicleType")
-                    if vt in FLYRIDE:
+                    vk = vkind(e.get("vehicle"))
+                    if vk == "glider":
                         ride_open[a] = ts(e.get("_D"))
-                    elif vt not in AIRCRAFT:
+                    elif vk == "drive":
                         seat = e.get("seatIndex")
                         if seat is None:
                             seat = (e.get("vehicle") or {}).get("seatIndex")
@@ -335,15 +351,15 @@ def analyse(mid):
             elif T == "LogVehicleLeave":
                 a = (e.get("character") or {}).get("accountId")
                 if a in accts:
-                    vt = (e.get("vehicle") or {}).get("vehicleType")
-                    if vt in AIRCRAFT:
+                    vk = vkind(e.get("vehicle"))
+                    if vk == "air":
                         air_exit[a] = ts(e.get("_D"))
-                    elif vt in FLYRIDE:
+                    elif vk == "glider":
                         t0, t1 = ride_open.pop(a, None), ts(e.get("_D"))
                         if t0 and t1 and 0 <= t1 - t0 <= 1800:
                             tel[NAME[a]]["flySec"] += t1 - t0
                             tel[NAME[a]]["flyN"] += 1
-                    else:
+                    elif vk == "drive":
                         close_drive(a, ts(e.get("_D")))
             elif T == "LogParachuteLanding":
                 a = (e.get("character") or {}).get("accountId")
@@ -412,6 +428,7 @@ def analyse(mid):
         members[n]["t"] = {k: (round(v, 1) if isinstance(v, float) else v)
                            for k, v in tel[n].items()}
         members[n]["t"]["w"] = dict(weapons[n])     # raw damageCauserName -> kills
+        members[n]["t"]["tv"] = TEL_V
     return {"id": mid, "at": attrs.get("createdAt"), "map": attrs.get("mapName"),
             "dur": attrs.get("duration"), "rank": roster["attributes"]["stats"].get("rank"),
             "rosters": rosters, "members": members, "foes": list(foes.values()),
@@ -454,7 +471,7 @@ print("API 목록 밖의 이전 경기 %d개 유지" % carried, file=sys.stderr)
 # taken, opponents) is re-analysed while PUBG still serves it - often well past the
 # 14-day listing. Once it is gone (404) it is marked and never asked again.
 def _stale(m):
-    return not m.get("gone") and any("w" not in ((s.get("t") or {})) for s in m["members"].values())
+    return not m.get("gone") and any((s.get("t") or {}).get("tv") != TEL_V for s in m["members"].values())
 
 
 def _redo(m):
@@ -483,6 +500,13 @@ if _old:
                 redone += 1
     print("이전 경기 보강: 재분석 %d개 · PUBG 에서 삭제됨 %d개 · 실패(다음에 재시도) %d개"
           % (redone, gone, len(_old) - redone - gone), file=sys.stderr)
+for m in matches:
+    if not m.get("gone"):
+        continue
+    for s in m["members"].values():
+        t = s.get("t")
+        if t and t.get("tv") != TEL_V:
+            t["flySec"], t["flyN"], t["tv"] = 0, 0, TEL_V
 
 # /seasons carries no start date, so derive the season boundary from the data: for the
 # member with the most ranked rounds, their Nth most recent collected match is the
