@@ -462,7 +462,9 @@ def _redo(m):
         res, _w = analyse(m["id"])
         return m, res
     except urllib.error.HTTPError as e:
-        return m, ("gone" if e.code == 404 else None)
+        # 404: the match is gone. 403: the match is still listed but its telemetry
+        # file has expired on the CDN - just as permanent, so stop asking either way.
+        return m, ("gone" if e.code in (403, 404) else None)
     except Exception:
         return m, None
 
