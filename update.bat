@@ -14,7 +14,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-git add docs highlights.json cache
+git add docs highlights.json highlights.txt cache
 git diff --cached --quiet && (
   echo [%date% %time%] 변경 없음 - 푸시 생략
   exit /b 0

@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 ROOT = pathlib.Path(__file__).resolve().parent
 ENV = ROOT / ".env"
 HL = ROOT / "highlights.json"
+HL_TXT = ROOT / "highlights.txt"     # one clip per line - the easy way to add clips
 TEMPLATE = ROOT / "template.html"
 OUT_HTML = ROOT / "docs" / "index.html"
 OUT_JSON = ROOT / "docs" / "data.json"      # the same seed, for anything else that wants it
@@ -62,8 +63,44 @@ def yt_id(u):
 HL_KEEP = 3     # clips per member on the page
 
 
+def txt_rows():
+    """highlights.txt -> rows, oldest first (file order). Lines: 닉네임 | 제목 | 링크 | 날짜"""
+    import re
+    if not HL_TXT.exists():
+        return []
+    full = re.compile(r"^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$")
+    short = re.compile(r"^(\d{1,2})[/.](\d{1,2})$")
+    rows = []
+    for n, line in enumerate(HL_TXT.read_text(encoding="utf-8-sig").splitlines(), 1):
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        parts = [p.strip() for p in s.split("|")]
+        url = next((p for p in parts if p.startswith("http") or "youtu" in p), "")
+        if not url:
+            print("::warning title=highlights.txt::%d번째 줄에 링크가 없어 건너뜁니다 "
+                  "(형식: 닉네임 | 제목 | 링크)" % n)
+            continue
+        date, rest = "", []
+        for p in parts[1:]:
+            if p == url or not p:
+                continue
+            m = full.match(p)
+            if m:
+                date = "%04d-%02d-%02d" % tuple(int(x) for x in m.groups())
+                continue
+            m = short.match(p)
+            if m:
+                date = "%04d-%02d-%02d" % (datetime.now(KST).year, int(m.group(1)), int(m.group(2)))
+                continue
+            rest.append(p)
+        rows.append({"player": "" if parts[0] == url else parts[0],
+                     "title": " ".join(rest), "url": url, "date": date})
+    return rows
+
+
 def load_highlights():
-    if not HL.exists():
+    if not HL.exists() and not HL_TXT.exists():
         return []
     # The file is edited by hand on github.com, where one missing comma is easy.
     # Never let that wipe the section: fall back to the clips already published.
@@ -76,13 +113,19 @@ def load_highlights():
               % (why, len(prev)))   # stdout: Actions shows ::warning as an annotation
         return prev
 
-    try:
-        raw = json.loads(HL.read_text(encoding="utf-8"))
-    except Exception as e:
-        return keep_published("highlights.json 을 읽지 못했습니다 (%s)" % e)
-    rows = raw.get("clips") if isinstance(raw, dict) else raw
-    if not isinstance(rows, list):
-        return keep_published("highlights.json 형식이 올바르지 않습니다 - clips 배열이 필요합니다")
+    rows = []
+    if HL.exists():
+        try:
+            raw = json.loads(HL.read_text(encoding="utf-8"))
+        except Exception as e:
+            return keep_published("highlights.json 을 읽지 못했습니다 (%s)" % e)
+        rows = raw.get("clips") if isinstance(raw, dict) else raw
+        if not isinstance(rows, list):
+            return keep_published("highlights.json 형식이 올바르지 않습니다 - clips 배열이 필요합니다")
+    # oldest -> newest: JSON clips by date, then highlights.txt in file order
+    rows = [c for _, c in sorted(enumerate(rows), key=lambda x: (
+        str(x[1].get("date") or "") if isinstance(x[1], dict) else "", x[0]))]
+    rows += txt_rows()
 
     out, skipped = [], 0
     for i, c in enumerate(rows):
@@ -123,7 +166,7 @@ def load_highlights():
 
     # newest first; at most HL_KEEP per member - older ones beyond that stay in the
     # file but are not published
-    out = [c for _, c in sorted(enumerate(out), key=lambda x: (x[1].get("date") or "", x[0]), reverse=True)]
+    out = out[::-1]
     seen, kept = collections.Counter(), []
     for c in out:
         seen[c["player"]] += 1

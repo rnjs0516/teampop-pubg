@@ -71,6 +71,18 @@ PC 가 켜져 있어야 실행됩니다.
 
 멤버마다 하이라이트 클립을 1~3개씩 올려둡니다. 페이지의 **하이라이트** 섹션에 멤버별로 최신순으로 나오고, 등록된 클립이 없으면 섹션이 숨습니다.
 
+**가장 쉬운 방법 — github.com 에서 `highlights.txt` 에 한 줄 추가**
+
+[highlights.txt 편집](https://github.com/rnjs0516/teampop-pubg/edit/main/highlights.txt) 을 열고 맨 아래에 한 줄을 적은 뒤 **Commit changes** 를 누르면, 2~3분 뒤 사이트에 나옵니다. PC 에 아무것도 설치할 필요가 없습니다.
+
+```
+DDalGi_GOD | 1v3 클러치 | https://youtu.be/XXXXXXXXXXX | 11/23
+```
+
+날짜는 빼도 되고, 아래 줄일수록 최신으로 봅니다. 링크가 없는 줄은 건너뛰고 나머지는 그대로 올라갑니다.
+
+**PC 에서 `clip.py` 로** (아래) — `highlights.json` 에 기록됩니다. 두 파일은 함께 쓰여서 섞어 써도 됩니다.
+
 ```powershell
 python clip.py "https://youtu.be/XXXXXXXXXXX" -p gunerz_ -t "1v4 클러치"
 python clip.py --list          # 등록된 클립 보기

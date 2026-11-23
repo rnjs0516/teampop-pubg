@@ -1317,7 +1317,7 @@ function renderHighlights(force){
   const names=SQUAD.filter(n=>by[n]).concat(Object.keys(by).filter(n=>SQUAD.indexOf(n)<0 && n))
     .concat(by[""] ? [""] : []);
   wrap.innerHTML=names.map(n=>{
-    const rows=by[n].sort((a,b)=>String(b.h.date||"").localeCompare(String(a.h.date||"")) || b.i-a.i);
+    const rows=by[n].sort((a,b)=>a.i-b.i);   /* the build already ordered them newest first */
     return '<div class="hl-day"><h3>'+(n ? esc(n) : "기타")+"<span>"+rows.length+"개</span></h3>"+
       '<div class="hls-grid">'+rows.map(x=>clipCard(x.h,x.i)).join("")+"</div></div>";
   }).join("");
