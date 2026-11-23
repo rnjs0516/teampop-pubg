@@ -273,7 +273,8 @@ def analyse(mid):
 
     tel = {n: {"clutch": 0, "first": 0, "nade": 0, "tAssist": 0, "revSec": 0.0, "revN": 0,
                "swimSec": 0.0, "swimDist": 0.0, "flySec": 0.0, "flyN": 0,
-               "chuteSec": 0.0, "chuteDist": 0.0, "driveSec": 0.0, "driveN": 0}
+               "chuteSec": 0.0, "chuteDist": 0.0, "driveSec": 0.0, "driveN": 0,
+               "dmgIn": 0.0, "dmgEnemy": 0.0}
            for n in members}
     weapons = {n: collections.Counter() for n in members}
 
@@ -336,6 +337,17 @@ def analyse(mid):
                     t0, t1 = air_exit.pop(a, None), ts(e.get("_D"))
                     if t0 and t1 and 0 <= t1 - t0 <= 600:
                         tel[NAME[a]]["chuteSec"] += t1 - t0
+            elif T == "LogPlayerTakeDamage":
+                vic = e.get("victim") or {}
+                a = vic.get("accountId")
+                # damage is clamped to remaining HP; a knocked player is always logged 0
+                if a in accts and not vic.get("isDBNO"):
+                    dmg = float(e.get("damage") or 0)
+                    tel[NAME[a]]["dmgIn"] += dmg
+                    att = e.get("attacker") or {}
+                    if att.get("accountId") and att.get("accountId") != a \
+                            and att.get("teamId") != vic.get("teamId"):
+                        tel[NAME[a]]["dmgEnemy"] += dmg
             elif T == "LogPlayerMakeGroggy":
                 v = (e.get("victim") or {}).get("accountId")
                 if v in state:

@@ -287,6 +287,10 @@ const METRICS = [
        r.bestMatch.rank+"위/"+(r.bestMatch.rosters||"?")+"팀 · "+
        ((r.bestMatch.members[r.name]||{}).kills||0)+"킬 · 수집 "+r.bestN+"경기 중"
      : "수집된 경기 없음"},
+  {k:"avgTaken", label:"평균 받은 피해", fmt:v=>v?Math.round(v).toLocaleString("ko-KR"):"—",
+   title:r=>r.takenN ? "텔레메트리 분석된 "+r.takenN+"경기 평균 · 적에게 받은 것 경기당 "+
+     Math.round(r.takenEnemy)+" · 기절 후 피해는 PUBG가 기록하지 않아 제외"
+     : "정밀 분석 후 표시됩니다"},
   {k:"avgRank", label:"평균 등수", fmt:v=>v?v.toFixed(2):"—", lower:true},
   {k:"t10Pct",  label:"TOP10률",   fmt:v=>v.toFixed(1)+"%"},
   {k:"hsPct",   label:"헤드샷률",  fmt:v=>v.toFixed(1)+"%"},
@@ -618,7 +622,7 @@ function analyseTelemetry(events, acctByName, namesPresent){
     if(acctByName[n]) accts[acctByName[n]]=n;
     out[n]={clutch:0, first:0, nade:0, tAssist:0, revSec:0, revN:0,
             swimSec:0, swimDist:0, flySec:0, flyN:0, chuteSec:0, chuteDist:0,
-            driveSec:0, driveN:0, weapons:{}};
+            driveSec:0, driveN:0, dmgIn:0, dmgEnemy:0, weapons:{}};
   });
   const ids=Object.keys(accts);
   if(!ids.length) return out;
@@ -681,6 +685,14 @@ function analyseTelemetry(events, acctByName, namesPresent){
         o.chuteDist+=+(e.distance||0);
         delete airExit[a];
         if(t0 && t1 && t1>=t0 && t1-t0<=600000) o.chuteSec+=(t1-t0)/1000;
+      }
+    }else if(T==="LogPlayerTakeDamage"){
+      /* clamped to remaining HP; a knocked player is always logged 0 */
+      const vic=e.victim||{}, a=vic.accountId;
+      if(accts[a] && !vic.isDBNO){
+        const o=out[accts[a]], dmg=+(e.damage||0), att=e.attacker||{};
+        o.dmgIn+=dmg;
+        if(att.accountId && att.accountId!==a && att.teamId!==vic.teamId) o.dmgEnemy+=dmg;
       }
     }else if(T==="LogPlayerMakeGroggy"){
       const v=(e.victim||{}).accountId;
@@ -745,7 +757,8 @@ async function deepScan(){
               clutch:o.clutch, first:o.first, nade:o.nade, tAssist:o.tAssist,
               revSec:o.revSec, revN:o.revN, swimSec:o.swimSec, swimDist:o.swimDist,
               flySec:o.flySec, flyN:o.flyN, chuteSec:o.chuteSec, chuteDist:o.chuteDist,
-              driveSec:o.driveSec, driveN:o.driveN};
+              driveSec:o.driveSec, driveN:o.driveN,
+              dmgIn:Math.round(o.dmgIn*10)/10, dmgEnemy:Math.round(o.dmgEnemy*10)/10};
             seasonWeapons[n]=seasonWeapons[n]||{};
             Object.keys(o.weapons).forEach(w=>{
               seasonWeapons[n][w]=(seasonWeapons[n][w]||0)+o.weapons[w];
@@ -787,13 +800,16 @@ function derive(p){
    game is taken from the collected matches, which cover only part of the season. */
 function bestDamage(){
   const out={};
-  SQUAD.forEach(n=>{ out[n]={dmg:0,n:0,match:null}; });
+  SQUAD.forEach(n=>{ out[n]={dmg:0,n:0,match:null,tIn:0,tEn:0,tN:0}; });
   state.matches.forEach(m=>{
     Object.keys(m.members||{}).forEach(n=>{
       const o=out[n]; if(!o) return;
       o.n++;
       const d=+(m.members[n].damageDealt||0);
       if(d>o.dmg){ o.dmg=d; o.match=m; }
+      /* damage taken exists only where telemetry was analysed */
+      const t=m.members[n].t;
+      if(t && t.dmgIn!=null){ o.tN++; o.tIn+=+t.dmgIn; o.tEn+=+(t.dmgEnemy||0); }
     });
   });
   return out;
@@ -803,6 +819,7 @@ const rows = () => {
   return state.players.map(p=>{
     const r=derive(p), b=bd[p.name]||{dmg:0,n:0,match:null};
     r.bestDmg=b.dmg; r.bestN=b.n; r.bestMatch=b.match;
+    r.takenN=b.tN; r.avgTaken=b.tN? b.tIn/b.tN : null; r.takenEnemy=b.tN? b.tEn/b.tN : 0;
     return r;
   });
 };
@@ -877,6 +894,10 @@ const AWARDS=[
    score:a=>a.flySec,
    value:a=>Math.round(a.flySec)+"초 · "+a.flyN+"회 탑승"+
      (a.n? " · 낙하 평균 "+Math.round(a.chuteDist/a.n)+"m" : "")},
+  {k:"tank",      icon:"🛡️", title:"몸빵 장인",   desc:"경기당 적에게 받은 피해 (기절 전 깎인 체력)", telem:true,
+   score:a=>a.takenN? a.dmgEnemy/a.takenN : 0,
+   value:a=>a.takenN? "경기당 "+Math.round(a.dmgEnemy/a.takenN)+" · 총 "+
+     Math.round(a.dmgEnemy).toLocaleString("ko-KR") : "—"},
   {k:"drive",     icon:"🚗", title:"장거리운전 장인", desc:"경기당 평균 운전 시간 (운전석 기준)", telem:true,
    score:a=>a.n? a.driveSec/a.n : 0,
    value:a=>a.n? "경기당 "+mmss(a.driveSec/a.n)+" · 총 "+Math.round(a.driveSec/60)+"분 · "+
@@ -888,7 +909,7 @@ function awardStats(){
   SQUAD.forEach(n=>{ acc[n]={name:n,n:0,kills:0,dmg:0,teamKills:0,teamDmg:0,hs:0,surv:0,
     rankSum:0,revives:0,assists:0,dbno:0,clutch:0,first:0,nade:0,tAssist:0,revSec:0,revN:0,
     swimSec:0,swimDist:0,flySec:0,flyN:0,chuteSec:0,chuteDist:0,
-    driveSec:0,driveN:0,rideDist:0,
+    driveSec:0,driveN:0,rideDist:0,dmgIn:0,dmgEnemy:0,takenN:0,
     topWeap:"",topWeapN:0,assistEff:0,dbnoAssist:0}; });
   state.matches.forEach(m=>{
     const names=memberNames(m);
@@ -908,7 +929,8 @@ function awardStats(){
              a.swimSec+=t.swimSec||0; a.swimDist+=t.swimDist||0;
              a.flySec+=t.flySec||0; a.flyN+=t.flyN||0;
              a.chuteSec+=t.chuteSec||0; a.chuteDist+=t.chuteDist||0;
-             a.driveSec+=t.driveSec||0; a.driveN+=t.driveN||0; }
+             a.driveSec+=t.driveSec||0; a.driveN+=t.driveN||0;
+             if(t.dmgIn!=null){ a.dmgIn+=+t.dmgIn; a.dmgEnemy+=+(t.dmgEnemy||0); a.takenN++; } }
     });
   });
   SQUAD.forEach(n=>{
@@ -947,7 +969,7 @@ function renderAwards(){
       "</span></span></div>";
   }).join("");
   document.getElementById("award-note").textContent = hasT
-    ? "위기 해결사·무기 장인·선봉장·폭파 전문가는 경기 텔레메트리에서 계산했습니다" +
+    ? "위기 해결사·무기 장인·선봉장·폭파 전문가·몸빵 장인은 경기 텔레메트리에서 계산했습니다" +
       (state.telemetryAt ? " (" + state.telemetryAt + " 기준)." : ".") +
       " 에임 장인은 5킬 이상인 멤버만 후보입니다."
     : "위기 해결사·무기 장인·선봉장·폭파 전문가는 경기 텔레메트리가 있어야 계산됩니다. 상단 갱신 패널의 정밀 분석을 실행하세요.";
@@ -982,7 +1004,7 @@ function renderTable(){
   document.getElementById("cmp-note").textContent = cov.length
     ? "최고 딜은 시즌 경기 중 단일 경기 최고값입니다. 경쟁전 시즌 API에 경기별 최고 딜 항목이 없어 경기 데이터에서 계산했고, 스쿼드 2인 이상이 함께한 경기만 모으므로 멤버별 "+
       Math.min.apply(null,cov.map(r=>r.bestN))+"~"+Math.max.apply(null,cov.map(r=>r.bestN))+
-      "경기 기준입니다. 나머지 열은 경쟁전 API의 시즌 전체 값입니다."
+      "경기 기준입니다. 평균 받은 피해도 같은 경기들에서 텔레메트리로 계산했고, 기절 후 피해는 PUBG가 0으로 기록해 빠집니다. 나머지 열은 경쟁전 API의 시즌 전체 값입니다."
     : "";
   document.querySelectorAll("#cmp-tbl thead button").forEach(b=>{
     b.onclick=()=>{
@@ -1113,6 +1135,7 @@ function renderMatches(){
         '"><span class="mn"><span class="nm-t">'+esc(n)+"</span>"+
         (isPom?'<span class="pom-badge">POM</span>':"")+'</span><span class="mv"><b>'+
         (s.kills||0)+"</b>킬 <b>"+Math.round(s.damageDealt||0)+"</b>딜 "+
+        (t && t.dmgIn!=null ? "<b>"+Math.round(t.dmgIn)+"</b>받음 " : "")+
         mmss(s.timeSurvived||0)+(extra.length?" · "+esc(extra.join(" · ")):"")+"</span></div>";
     }).join("");
     const rnds=(m.randoms||[]).filter(Boolean).map(n=>
