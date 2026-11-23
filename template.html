@@ -560,6 +560,7 @@ async function run(opts){
     const acctToName={};
     found.forEach(f=>{ acctToName[f.accountId]=f.name; });
 
+    const prevSeason=state.seasonId;
     const season=await currentSeason();
     state.seasonId=season;
 
@@ -615,7 +616,13 @@ async function run(opts){
     }));
     const sb=seasonStartOf(season, out, state.players);
     state.seasonStart=sb.at; state.seasonSrc=sb.src;
-    state.matches = sb.at ? out.filter(m=>String(m.at||"")>=sb.at) : out;
+    const fresh = sb.at ? out.filter(m=>String(m.at||"")>=sb.at) : out;
+    /* the API lists ~14 days only - keep every match this page already had for the season */
+    const ids={}; fresh.forEach(m=>{ ids[m.id]=1; });
+    const older = season===prevSeason
+      ? state.matches.filter(m=>!ids[m.id] && (!sb.at || String(m.at||"")>=sb.at)) : [];
+    state.matches = fresh.concat(older)
+      .sort((a,b)=>String(b.at||"").localeCompare(String(a.at||"")));
     state.live=true;
     const covered=state.matches.every(m=>Object.keys(m.members||{}).every(n=>m.members[n].t));
     if(!covered){ state.telemetryAt=null; state.weapons={}; }
@@ -779,7 +786,8 @@ async function deepScan(){
               revSec:o.revSec, revN:o.revN, swimSec:o.swimSec, swimDist:o.swimDist,
               flySec:o.flySec, flyN:o.flyN, chuteSec:o.chuteSec, chuteDist:o.chuteDist,
               driveSec:o.driveSec, driveN:o.driveN,
-              dmgIn:Math.round(o.dmgIn*10)/10, dmgEnemy:Math.round(o.dmgEnemy*10)/10};
+              dmgIn:Math.round(o.dmgIn*10)/10, dmgEnemy:Math.round(o.dmgEnemy*10)/10,
+              w:o.weapons};
             seasonWeapons[n]=seasonWeapons[n]||{};
             Object.keys(o.weapons).forEach(w=>{
               seasonWeapons[n][w]=(seasonWeapons[n][w]||0)+o.weapons[w];
@@ -788,10 +796,16 @@ async function deepScan(){
         }catch(e){ /* one bad match must not stop the pass */ }
       }));
     }
+    /* sum over every match, including ones too old for the API to re-serve */
+    const all={};
+    state.matches.forEach(m=>Object.keys(m.members||{}).forEach(n=>{
+      const w=((m.members[n].t)||{}).w; if(!w) return;
+      all[n]=all[n]||{};
+      Object.keys(w).forEach(k=>{ const l=weapLabel(k); all[n][l]=(all[n][l]||0)+w[k]; });
+    }));
     const weap={};
-    Object.keys(seasonWeapons).forEach(n=>{
-      weap[n]=Object.keys(seasonWeapons[n]).map(w=>[weapLabel(w),seasonWeapons[n][w]])
-        .sort((a,b)=>b[1]-a[1]).slice(0,8);
+    Object.keys(all).forEach(n=>{
+      weap[n]=Object.keys(all[n]).map(l=>[l,all[n][l]]).sort((a,b)=>b[1]-a[1]).slice(0,8);
     });
     state.weapons=weap;
     state.telemetryAt=kst(new Date());

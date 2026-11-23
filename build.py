@@ -409,6 +409,7 @@ def analyse(mid):
     for n in members:
         members[n]["t"] = {k: (round(v, 1) if isinstance(v, float) else v)
                            for k, v in tel[n].items()}
+        members[n]["t"]["w"] = dict(weapons[n])     # raw damageCauserName -> kills
     return {"id": mid, "at": attrs.get("createdAt"), "map": attrs.get("mapName"),
             "dur": attrs.get("duration"), "rank": roster["attributes"]["stats"].get("rank"),
             "rosters": rosters, "members": members, "foes": list(foes.values()),
@@ -430,6 +431,54 @@ with ThreadPoolExecutor(max_workers=5) as ex:
                 season_weapons[nm].update(c)
 
 matches.sort(key=lambda x: x["at"] or "", reverse=True)
+
+# The API lists only ~14 days of matches. Keep every match an earlier build already
+# stored for this season; otherwise the season's first weeks silently fall off.
+try:
+    _prev_seed = json.loads(OUT_JSON.read_text(encoding="utf-8"))
+except Exception:
+    _prev_seed = {}
+carried = 0
+if _prev_seed.get("seasonId") == cur_season:
+    _have = {m["id"] for m in matches}
+    for m in _prev_seed.get("matches", []):
+        if m.get("id") and m["id"] not in _have:
+            matches.append(m)
+            carried += 1
+    matches.sort(key=lambda x: x["at"] or "", reverse=True)
+print("API 목록 밖의 이전 경기 %d개 유지" % carried, file=sys.stderr)
+
+# A carried match stored before a newer field existed (per-match weapons, damage
+# taken, opponents) is re-analysed while PUBG still serves it - often well past the
+# 14-day listing. Once it is gone (404) it is marked and never asked again.
+def _stale(m):
+    return not m.get("gone") and any("w" not in ((s.get("t") or {})) for s in m["members"].values())
+
+
+def _redo(m):
+    try:
+        res, _w = analyse(m["id"])
+        return m, res
+    except urllib.error.HTTPError as e:
+        return m, ("gone" if e.code == 404 else None)
+    except Exception:
+        return m, None
+
+
+_old = [m for m in matches if _stale(m)]
+if _old:
+    redone = gone = 0
+    with ThreadPoolExecutor(max_workers=5) as ex:
+        for m, res in ex.map(_redo, _old):
+            if res == "gone":
+                m["gone"] = True
+                gone += 1
+            elif res:
+                m.clear()
+                m.update(res)
+                redone += 1
+    print("이전 경기 보강: 재분석 %d개 · PUBG 에서 삭제됨 %d개 · 실패(다음에 재시도) %d개"
+          % (redone, gone, len(_old) - redone - gone), file=sys.stderr)
 
 # /seasons carries no start date, so derive the season boundary from the data: for the
 # member with the most ranked rounds, their Nth most recent collected match is the
@@ -455,6 +504,11 @@ if season_start:
     dropped = before - len(matches)
     print("season start %s (from %s) - dropped %d older matches"
           % (season_start, cands[0][2], dropped), file=sys.stderr)
+
+season_weapons = collections.defaultdict(collections.Counter)
+for m in matches:
+    for nm, s in m["members"].items():
+        season_weapons[nm].update((s.get("t") or {}).get("w") or {})
 
 # ---------- opponents: one ranked lookup per player per season ----------
 # Looked up once, shortly after the match, and kept in cache/foes.json - so the
