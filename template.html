@@ -1263,7 +1263,7 @@ function renderMatches(){
       (names.length===full?" 전원":"")+'</span></div><div class="mems">'+mems+rnds+"</div>"+
       clipBtns(m)+
       ((m.foes||[]).length
-        ? '<div class="foes"><span class="foes-h">잡은 상대</span>'+m.foes.map(foeLine).join("")+"</div>"
+        ? '<div class="foes"><span class="foes-h">우릴 잡은 상대</span>'+m.foes.map(foeLine).join("")+"</div>"
         : "")+"</div></div>";
   }).join("");
 }
