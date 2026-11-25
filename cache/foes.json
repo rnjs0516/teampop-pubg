@@ -120,6 +120,16 @@
 "s": "4",
 "t": "Crystal"
 },
+"account.19b1d1e19dca4697853045277c009211": {
+"at": "2026-11-26",
+"dmg": 226,
+"kda": 1.81,
+"n": 93,
+"name": "KIYF",
+"rp": 2200,
+"s": "4",
+"t": "Platinum"
+},
 "account.1ac8c589863d455f9e3b065591a9d25e": {
 "at": "2026-11-23",
 "dmg": 239,
@@ -210,6 +220,16 @@
 "s": "3",
 "t": "Platinum"
 },
+"account.202ba116acba4cfd9ac9939155230d32": {
+"at": "2026-11-26",
+"dmg": 196,
+"kda": 1.17,
+"n": 75,
+"name": "Lucky_0430",
+"rp": 2113,
+"s": "1",
+"t": "Gold"
+},
 "account.2135641afd3e47959744e01a7e5a0348": {
 "at": "2026-11-23",
 "dmg": 156,
@@ -260,6 +280,16 @@
 "s": "1",
 "t": "Platinum"
 },
+"account.27a18b8d36924442bf1c5b3aafe5f3ff": {
+"at": "2026-11-26",
+"dmg": 319,
+"kda": 2.56,
+"n": 45,
+"name": "ZR_MarshallTeach",
+"rp": 2482,
+"s": "2",
+"t": "Platinum"
+},
 "account.28da051b6f694c30915e2d7b657c6287": {
 "at": "2026-11-23",
 "dmg": 171,
@@ -299,6 +329,26 @@
 "rp": 2680,
 "s": "4",
 "t": "Crystal"
+},
+"account.2b5b30ef52d7480c95093cb56ce41028": {
+"at": "2026-11-26",
+"dmg": 116,
+"kda": 0.44,
+"n": 25,
+"name": "CPR_Mir",
+"rp": 1776,
+"s": "1",
+"t": "Silver"
+},
+"account.2c684f8677c14d12b375ed067020703c": {
+"at": "2026-11-26",
+"dmg": 159,
+"kda": 1.32,
+"n": 52,
+"name": "FACT-HONG",
+"rp": 2120,
+"s": "1",
+"t": "Gold"
 },
 "account.2cee52b6eb2a4467971eab92855b451b": {
 "at": "2026-11-23",
@@ -420,6 +470,16 @@
 "s": "4",
 "t": "Platinum"
 },
+"account.3d9152e5d27d48daaa9820e93b2c27f2": {
+"at": "2026-11-26",
+"dmg": 85,
+"kda": 0.56,
+"n": 301,
+"name": "CRPT_N_N",
+"rp": 2038,
+"s": "2",
+"t": "Gold"
+},
 "account.3d97b29f4d9f46d39963b125ec0617a7": {
 "at": "2026-11-23",
 "dmg": 181,
@@ -439,6 +499,16 @@
 "rp": 2037,
 "s": "2",
 "t": "Gold"
+},
+"account.3f3c5b76bf9144f3926e8923ae0e628d": {
+"at": "2026-11-26",
+"dmg": 432,
+"kda": 4.58,
+"n": 14,
+"name": "SeoGaJi2",
+"rp": 1632,
+"s": "2",
+"t": "Silver"
 },
 "account.4002f844c3494836939e5d87aea49155": {
 "at": "2026-11-23",
@@ -560,6 +630,26 @@
 "s": "1",
 "t": "Gold"
 },
+"account.4e8b37134562402684e53269ff6617ff": {
+"at": "2026-11-26",
+"dmg": 319,
+"kda": 2.68,
+"n": 119,
+"name": "WZ1zzang",
+"rp": 2149,
+"s": "1",
+"t": "Gold"
+},
+"account.4e938659680e435b99d4ded71323fca3": {
+"at": "2026-11-26",
+"dmg": 215,
+"kda": 1.55,
+"n": 85,
+"name": "ASU_Nyyyyh",
+"rp": 2170,
+"s": "1",
+"t": "Gold"
+},
 "account.4fc3cb0897054d7ab6927b82349a9767": {
 "at": "2026-11-23",
 "dmg": 274,
@@ -619,6 +709,26 @@
 "rp": 2050,
 "s": "2",
 "t": "Gold"
+},
+"account.57e47a7f4c2048d986c81f7bc7968bbc": {
+"at": "2026-11-26",
+"dmg": 306,
+"kda": 2.0,
+"n": 121,
+"name": "Ulsan-Ilsan",
+"rp": 2600,
+"s": "4",
+"t": "Crystal"
+},
+"account.598283ada9da48d6b3dfecb3a3835c69": {
+"at": "2026-11-26",
+"dmg": 520,
+"kda": 5.0,
+"n": 29,
+"name": "AKII911",
+"rp": 2389,
+"s": "3",
+"t": "Platinum"
 },
 "account.5a2d173e084d4f408c0af6ea25a55ee2": {
 "at": "2026-11-23",
@@ -690,6 +800,16 @@
 "s": "3",
 "t": "Silver"
 },
+"account.6a0cff671eda4a27a4ca2830a38a6f9b": {
+"at": "2026-11-26",
+"dmg": 337,
+"kda": 3.19,
+"n": 24,
+"name": "000000CB",
+"rp": 2261,
+"s": "4",
+"t": "Platinum"
+},
 "account.6a0e3875a8d34922a12d172d18db0b1a": {
 "at": "2026-11-23",
 "dmg": 243,
@@ -760,6 +880,16 @@
 "s": "2",
 "t": "Gold"
 },
+"account.7525c7fba33c40dbae2d90fe33b27b19": {
+"at": "2026-11-26",
+"dmg": 247,
+"kda": 1.99,
+"n": 230,
+"name": "DTF_ClanMojib-_-",
+"rp": 2534,
+"s": "1",
+"t": "Platinum"
+},
 "account.77c3319c8e424bb8a9c4f745def05772": {
 "at": "2026-11-23",
 "dmg": 242,
@@ -829,6 +959,16 @@
 "rp": 1830,
 "s": "4",
 "t": "Gold"
+},
+"account.81ab43b2ec6a431bb8ef8ab1425a7f3d": {
+"at": "2026-11-26",
+"dmg": 289,
+"kda": 1.88,
+"n": 144,
+"name": "HANA_YAYC",
+"rp": 2395,
+"s": "3",
+"t": "Platinum"
 },
 "account.843a07dc513c4428bb48f707039e4764": {
 "at": "2026-11-23",
@@ -950,6 +1090,16 @@
 "s": "1",
 "t": "Survivor"
 },
+"account.95d98402125c400b89d11a4db66cf608": {
+"at": "2026-11-26",
+"dmg": 292,
+"kda": 2.11,
+"n": 102,
+"name": "Leo_Marlboro",
+"rp": 2312,
+"s": "3",
+"t": "Platinum"
+},
 "account.98d9a948e3eb4c23a815e3bf198e1c57": {
 "at": "2026-11-23",
 "dmg": 169,
@@ -980,6 +1130,16 @@
 "s": "1",
 "t": "Gold"
 },
+"account.9a4e6681637c43ff91eb8c556b806ca1": {
+"at": "2026-11-26",
+"dmg": 251,
+"kda": 2.0,
+"n": 45,
+"name": "YEOPGIDAKDORI",
+"rp": 1795,
+"s": "1",
+"t": "Silver"
+},
 "account.9bc16846b0e442c3aa4e8bcf1dc5b397": {
 "at": "2026-11-23",
 "dmg": 293,
@@ -999,6 +1159,16 @@
 "rp": 2488,
 "s": "2",
 "t": "Platinum"
+},
+"account.9f1fb8888cf0487ab3b87b8a2499a74d": {
+"at": "2026-11-26",
+"dmg": 143,
+"kda": 0.85,
+"n": 190,
+"name": "PTSD_JJ",
+"rp": 2163,
+"s": "1",
+"t": "Gold"
 },
 "account.a1445f2b62774a38902655f6793ff56e": {
 "at": "2026-11-23",
@@ -1029,6 +1199,16 @@
 "rp": 1878,
 "s": "4",
 "t": "Gold"
+},
+"account.a3efe144688542e78e449b1902fce78b": {
+"at": "2026-11-26",
+"dmg": 197,
+"kda": 1.81,
+"n": 209,
+"name": "young_mi_",
+"rp": 2402,
+"s": "2",
+"t": "Platinum"
 },
 "account.a46db3b3f30f4e478a8a8edc747bcfd4": {
 "at": "2026-11-23",
@@ -1130,6 +1310,26 @@
 "s": "1",
 "t": "Platinum"
 },
+"account.af215e06b2b44fef9c55e800bb90c59b": {
+"at": "2026-11-26",
+"dmg": 206,
+"kda": 1.23,
+"n": 135,
+"name": "hyun021023",
+"rp": 2258,
+"s": "4",
+"t": "Platinum"
+},
+"account.b111b71d1b844132be618f777d88f6f2": {
+"at": "2026-11-26",
+"dmg": 124,
+"kda": 1.0,
+"n": 119,
+"name": "HANA_SDY",
+"rp": 1923,
+"s": "3",
+"t": "Gold"
+},
 "account.b33f07cde7b247e9bc369e72ad7d8fac": {
 "at": "2026-11-23",
 "dmg": 247,
@@ -1169,6 +1369,16 @@
 "rp": 2238,
 "s": "4",
 "t": "Platinum"
+},
+"account.b517c83e1139419ea100165c68141170": {
+"at": "2026-11-26",
+"dmg": 237,
+"kda": 1.97,
+"n": 64,
+"name": "CK-Zuns",
+"rp": 2133,
+"s": "1",
+"t": "Gold"
 },
 "account.b52dd7d115a549e791010bf35d3476fe": {
 "at": "2026-11-23",
@@ -1220,6 +1430,16 @@
 "s": "4",
 "t": "Gold"
 },
+"account.bb1a0e0cfd6f40c2b9f6893b95c5443e": {
+"at": "2026-11-26",
+"dmg": 136,
+"kda": 1.08,
+"n": 83,
+"name": "sosomesoe",
+"rp": 1999,
+"s": "3",
+"t": "Gold"
+},
 "account.bc037a4c953949a2a6f420d5931844a9": {
 "at": "2026-11-23",
 "dmg": 204,
@@ -1259,6 +1479,16 @@
 "rp": 2992,
 "s": "1",
 "t": "Crystal"
+},
+"account.bfa4fd8f3a714a8aa2f8227b9dedddf2": {
+"at": "2026-11-26",
+"dmg": 229,
+"kda": 1.79,
+"n": 103,
+"name": "Endorphin_555",
+"rp": 2251,
+"s": "4",
+"t": "Platinum"
 },
 "account.c3027d5dfc6840c692b3a75d3869bdff": {
 "at": "2026-11-23",
@@ -1620,6 +1850,16 @@
 "s": "4",
 "t": "Crystal"
 },
+"account.e5e4475f3e8743c3b24273bf401dde90": {
+"at": "2026-11-26",
+"dmg": 221,
+"kda": 1.43,
+"n": 138,
+"name": "yoonheuk-",
+"rp": 2168,
+"s": "1",
+"t": "Gold"
+},
 "account.e62b9a0eda6a4e40b2bb20410d861eb2": {
 "at": "2026-11-23",
 "dmg": 241,
@@ -1709,6 +1949,16 @@
 "rp": 1858,
 "s": "4",
 "t": "Gold"
+},
+"account.ef1380ee459b40039fad2c8ed82495c0": {
+"at": "2026-11-26",
+"dmg": 147,
+"kda": 1.15,
+"n": 132,
+"name": "TAEHA-3-",
+"rp": 2281,
+"s": "4",
+"t": "Platinum"
 },
 "account.ef3af69be0d4470ab84f5d8f690a4e23": {
 "at": "2026-11-23",
